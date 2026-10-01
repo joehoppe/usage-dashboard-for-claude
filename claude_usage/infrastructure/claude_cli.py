@@ -6,8 +6,11 @@ account details.
 
 from __future__ import annotations
 
+import logging
+import os
 import shutil
 import subprocess
+from collections.abc import Mapping
 from enum import Enum
 from typing import Protocol
 
@@ -38,17 +41,30 @@ class ClaudeCliRefresher:
         self,
         executable: str | None = None,
         timeout_seconds: int = 60,
+        log: logging.Logger | None = None,
+        env: Mapping[str, str] = os.environ,
     ) -> None:
         self._executable = executable
         self._timeout_seconds = timeout_seconds
+        self._log = log
+        self._env = env
 
     def refresh(self) -> RefreshOutcome:
         """Never raises: this runs on the refresh worker thread, where an
         escaping exception would die silently and wedge the button on
         "Refreshing…" — every failure mode is a return value.
+
+        Each failure writes one ERROR entry to the injected log, built only
+        from what the app already holds: never the child's output, and never
+        an exception's message — only its type name.
         """
-        exe = self._executable or shutil.which("claude")
+        search_path = self._env.get("PATH")
+        exe = self._executable or shutil.which("claude", path=search_path)
         if exe is None:
+            self._error(
+                "refresh not_found: claude_executable unset; searched PATH=%s",
+                "<unset>" if search_path is None else search_path,
+            )
             return RefreshOutcome.NOT_FOUND
         try:
             completed = subprocess.run(
@@ -61,9 +77,16 @@ class ClaudeCliRefresher:
                 check=False,
             )
         except subprocess.TimeoutExpired:
+            self._error("refresh timed_out after %ss: executable=%s", self._timeout_seconds, exe)
             return RefreshOutcome.TIMED_OUT
-        except OSError:
+        except OSError as exc:
+            self._error("refresh failed: %s: executable=%s", type(exc).__name__, exe)
             return RefreshOutcome.FAILED
         if completed.returncode == 0:
             return RefreshOutcome.REFRESHED
+        self._error("refresh failed: exit code %s: executable=%s", completed.returncode, exe)
         return RefreshOutcome.FAILED
+
+    def _error(self, message: str, *args: object) -> None:
+        if self._log is not None:
+            self._log.error(message, *args)
