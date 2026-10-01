@@ -92,8 +92,9 @@ def main(argv: list[str] | None = None) -> int:
     poller = PollerThread(service, config, on_view=frame.show_view)
 
     def deliver(view, outcome) -> None:
-        frame.show_view(view)
+        # Record the outcome first so the new view renders with it in one pass.
         frame.end_refresh(outcome_notice(outcome))
+        frame.show_view(view)
 
     worker = RefreshWorker(
         ClaudeCliRefresher(

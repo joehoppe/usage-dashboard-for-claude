@@ -6,6 +6,7 @@ calls Raise()/SetFocus()).
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable
 
 import wx
@@ -41,6 +42,9 @@ class QuotaFrame(wx.Frame):
         )
         self.SetBackgroundColour(wx.Colour(*theme.BACKGROUND))
         self._on_close = on_close
+        # The latest refresh's footer line, overlaid on every view shown.
+        # GUI-thread state only: the poller and the refresh worker never touch it.
+        self._refresh_failure: str | None = None
         self.panel = QuotaPanel(self)
         self._refresh_button: wx.Button | None = None
         self._help_button: wx.Button | None = None
@@ -72,9 +76,8 @@ class QuotaFrame(wx.Frame):
             max_height = max(refresh_size.height, refreshing_size.height)
             self._refresh_button.SetMinSize(wx.Size(max_width, max_height))
             # The "?" warns that refreshing spends quota (tooltip for hover,
-            # dialog for click) — it must be visible before the first click,
-            # so it cannot live on the Refresh button's own tooltip, which
-            # end_refresh() overwrites with failure outcomes.
+            # dialog for click). It must be visible before the first click,
+            # so it gets a button of its own.
             self._help_button = wx.Button(self, label="?", style=wx.BU_EXACTFIT)
             # BU_EXACTFIT hugs the "?" glyph too tightly to read as a button,
             # so widen it a little without touching the exact-fit height.
@@ -103,17 +106,21 @@ class QuotaFrame(wx.Frame):
         self._refresh_button.Disable()
         self._refresh_button.SetLabel("Refreshing…")
 
-    def end_refresh(self, tooltip: str | None) -> None:
+    def end_refresh(self, failure: str | None) -> None:
+        """Restore the button and record the outcome's footer line (None
+        clears it). Renders nothing: deliver() calls show_view straight
+        after, and that overlays the line.
+        """
+        self._refresh_failure = failure
         if self._refresh_button is None:
             return
         self._refresh_button.SetLabel("Refresh")
         self._refresh_button.Enable()
-        if tooltip is None:
-            self._refresh_button.UnsetToolTip()
-        else:
-            self._refresh_button.SetToolTip(tooltip)
 
     def show_view(self, view: QuotaView) -> None:
+        # Every view gets the last refresh's failure, poller views included:
+        # only a later click can show the problem is fixed.
+        view = dataclasses.replace(view, refresh_failure=self._refresh_failure)
         self._headline_text.SetLabel(view.headline)
         self._age_text.SetLabel(view.age_text)
         self.Layout()  # label widths changed; re-place the top row

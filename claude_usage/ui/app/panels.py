@@ -18,6 +18,7 @@ _TEXT_PRIMARY = wx.Colour(*theme.TEXT_PRIMARY)
 _TEXT_SECONDARY = wx.Colour(*theme.TEXT_SECONDARY)
 _TRACK_COLOR = wx.Colour(*theme.TRACK)
 _STALE_COLOR = wx.Colour(*theme.STALE_FILL)
+_WARNING_COLOR = wx.Colour(*theme.SEVERITY_FILLS["warning"])  # refresh failure line
 _SEVERITY_COLORS = {severity: wx.Colour(*rgb) for severity, rgb in theme.SEVERITY_FILLS.items()}
 _BAR_HEIGHT = 18
 _ROW_HEIGHT = 40
@@ -48,6 +49,8 @@ class QuotaPanel(wx.Panel):
         else:
             height += _ROW_HEIGHT * len(view.bars)
             height += _NOTICE_HEIGHT * len(view.notices)
+        if view.refresh_failure is not None:
+            height += _NOTICE_HEIGHT
         return height + _MARGIN
 
     def _on_paint(self, event: wx.PaintEvent) -> None:
@@ -68,9 +71,12 @@ class QuotaPanel(wx.Panel):
     def _draw_message(self, dc: wx.DC, view: QuotaView, y: int) -> None:
         dc.SetTextForeground(_TEXT_PRIMARY)
         dc.DrawText(view.message, _MARGIN, y)
+        y += _LINE_HEIGHT
         if view.message_detail:
             dc.SetTextForeground(_TEXT_SECONDARY)
-            dc.DrawText(view.message_detail, _MARGIN, y + 18)
+            dc.DrawText(view.message_detail, _MARGIN, y)
+            y += _LINE_HEIGHT
+        self._draw_refresh_failure(dc, view, y)
 
     def _draw_bar(self, dc: wx.DC, bar: BarView, y: int, *, greyed: bool) -> int:
         width = max(0, self.GetClientSize().width - 2 * _MARGIN)
@@ -99,4 +105,13 @@ class QuotaPanel(wx.Panel):
         dc.SetTextForeground(_TEXT_SECONDARY)
         for notice in view.notices:
             dc.DrawText(notice, _MARGIN, y)
-            y += 16
+            y += _NOTICE_HEIGHT
+        self._draw_refresh_failure(dc, view, y)
+
+    def _draw_refresh_failure(self, dc: wx.DC, view: QuotaView, y: int) -> None:
+        # Always the last line, in warning amber rather than critical red so
+        # it cannot be mistaken for a quota alarm.
+        if view.refresh_failure is None:
+            return
+        dc.SetTextForeground(_WARNING_COLOR)
+        dc.DrawText(view.refresh_failure, _MARGIN, y)

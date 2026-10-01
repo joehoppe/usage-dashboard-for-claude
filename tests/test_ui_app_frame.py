@@ -56,3 +56,55 @@ def test_rendering_a_view_never_widens_the_window(frame):
     # opening width by pushing the window back out.
     frame.show_view(make_view())
     assert frame.GetSize().width == EXPECTED_SIZE[0]
+
+
+FAILURE = "Refresh failed: claude not found"
+# _NOTICE_HEIGHT in panels.py, as a literal for the same reason as EXPECTED_SIZE.
+NOTICE_HEIGHT = 16
+
+
+def make_message_view(detail=None):
+    return QuotaView(
+        headline="No data",
+        age_text="no reading yet",
+        stale=True,
+        bars=(),
+        notices=(),
+        message="No quota data cached yet — click Refresh",
+        message_detail=detail,
+    )
+
+
+def test_a_poll_after_a_failed_refresh_keeps_the_failure(frame):
+    # A poll only re-reads ~/.claude.json and never re-runs claude, so it
+    # cannot know the problem is fixed (spec §3 "Lifetime").
+    frame.end_refresh(FAILURE)
+    frame.show_view(make_view())  # a poller view: refresh_failure is None
+    assert frame.panel._view.refresh_failure == FAILURE
+
+
+def test_a_successful_refresh_clears_the_failure_for_later_polls(frame):
+    frame.end_refresh(FAILURE)
+    frame.show_view(make_view())
+    frame.end_refresh(None)
+    frame.show_view(make_view())
+    frame.show_view(make_view())  # a later poll must not bring it back
+    assert frame.panel._view.refresh_failure is None
+
+
+def test_a_failed_refresh_leaves_no_button_tooltip(frame):
+    frame.end_refresh(FAILURE)
+    assert frame._refresh_button.GetToolTip() is None
+
+
+@pytest.mark.parametrize(
+    "view",
+    [make_view(), make_message_view(), make_message_view(detail="RuntimeError")],
+    ids=["bars", "message", "message-with-detail"],
+)
+def test_the_failure_line_grows_the_minimum_height_by_one_line(frame, view):
+    frame.show_view(view)
+    without = frame.GetMinClientSize().height
+    frame.end_refresh(FAILURE)
+    frame.show_view(view)
+    assert frame.GetMinClientSize().height - without == NOTICE_HEIGHT
