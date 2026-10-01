@@ -1,6 +1,7 @@
 """ClaudeCliRefresher spawn tests — always against a stub, never the real claude."""
 
 import json
+import logging
 import os
 import stat
 import subprocess
@@ -31,6 +32,35 @@ def write_stub(tmp_path: Path, body: str) -> str:
     return str(exe)
 
 
+class RecordingLog(logging.Handler):
+    """A real Logger whose entries are kept in memory as (level, message)."""
+
+    def __init__(self, name):
+        super().__init__()
+        self.entries = []
+        self.logger = logging.getLogger(name)
+        self.logger.propagate = False
+        self.logger.setLevel(logging.INFO)
+        self.logger.addHandler(self)
+
+    def emit(self, record):
+        self.entries.append((record.levelname, record.getMessage()))
+
+
+@pytest.fixture
+def log(request):
+    recording = RecordingLog(f"tests.claude_cli.{request.node.name}")
+    yield recording
+    recording.logger.removeHandler(recording)
+
+
+def no_claude_on_path(monkeypatch):
+    monkeypatch.setattr(
+        "claude_usage.infrastructure.claude_cli.shutil.which",
+        lambda name, path=None: None,
+    )
+
+
 def test_exit_zero_is_refreshed(tmp_path):
     exe = write_stub(tmp_path, "raise SystemExit(0)")
     assert ClaudeCliRefresher(executable=exe).refresh() is RefreshOutcome.REFRESHED
@@ -48,7 +78,7 @@ def test_timeout_is_timed_out(tmp_path):
 
 
 def test_no_executable_resolved_is_not_found(monkeypatch):
-    monkeypatch.setattr("claude_usage.infrastructure.claude_cli.shutil.which", lambda name: None)
+    no_claude_on_path(monkeypatch)
     assert ClaudeCliRefresher().refresh() is RefreshOutcome.NOT_FOUND
 
 
@@ -112,3 +142,65 @@ def test_child_gets_no_console_window(tmp_path):
         check=True,
     )
     assert json.loads(log.read_text(encoding="utf-8")) == 0
+
+
+def test_not_found_logs_the_searched_path(monkeypatch, log):
+    no_claude_on_path(monkeypatch)
+    ClaudeCliRefresher(log=log.logger, env={"PATH": "/usr/bin:/bin"}).refresh()
+    assert log.entries == [
+        ("ERROR", "refresh not_found: claude_executable unset; searched PATH=/usr/bin:/bin")
+    ]
+
+
+def test_not_found_with_no_path_says_unset(monkeypatch, log):
+    no_claude_on_path(monkeypatch)
+    ClaudeCliRefresher(log=log.logger, env={}).refresh()
+    assert log.entries == [
+        ("ERROR", "refresh not_found: claude_executable unset; searched PATH=<unset>")
+    ]
+
+
+def test_which_searches_the_injected_path(tmp_path, log):
+    # The logged PATH must be the PATH searched: a stub reachable only
+    # through the injected PATH must be found.
+    write_stub(tmp_path, "raise SystemExit(0)")
+    refresher = ClaudeCliRefresher(log=log.logger, env={"PATH": str(tmp_path)})
+    assert refresher.refresh() is RefreshOutcome.REFRESHED
+
+
+def test_timeout_logs_the_limit_and_executable(tmp_path, log):
+    exe = write_stub(tmp_path, "import time; time.sleep(30)")
+    ClaudeCliRefresher(executable=exe, timeout_seconds=1, log=log.logger).refresh()
+    assert log.entries == [("ERROR", f"refresh timed_out after 1s: executable={exe}")]
+
+
+def test_nonzero_exit_logs_the_code_and_executable(tmp_path, log):
+    exe = write_stub(tmp_path, "raise SystemExit(3)")
+    ClaudeCliRefresher(executable=exe, log=log.logger).refresh()
+    assert log.entries == [("ERROR", f"refresh failed: exit code 3: executable={exe}")]
+
+
+def test_spawn_failure_logs_only_the_exception_type(tmp_path, log):
+    missing = str(tmp_path / "nope")
+    ClaudeCliRefresher(executable=missing, log=log.logger).refresh()
+    assert log.entries == [("ERROR", f"refresh failed: FileNotFoundError: executable={missing}")]
+
+
+def test_success_logs_nothing(tmp_path, log):
+    exe = write_stub(tmp_path, "raise SystemExit(0)")
+    ClaudeCliRefresher(executable=exe, log=log.logger).refresh()
+    assert log.entries == []
+
+
+def test_child_output_is_never_logged(tmp_path, log):
+    # The child's output may contain account details (module docstring).
+    exe = write_stub(
+        tmp_path,
+        "import sys\n"
+        "print('SENTINEL-STDOUT')\n"
+        "print('SENTINEL-STDERR', file=sys.stderr)\n"
+        "raise SystemExit(3)\n",
+    )
+    ClaudeCliRefresher(executable=exe, log=log.logger).refresh()
+    assert len(log.entries) == 1
+    assert all("SENTINEL" not in message for _, message in log.entries)
