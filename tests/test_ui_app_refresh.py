@@ -11,7 +11,7 @@ from claude_usage.ui.app.refresh import (
     HELP_DIALOG_TITLE,
     HELP_TOOLTIP,
     RefreshWorker,
-    outcome_tooltip,
+    outcome_notice,
 )
 
 VIEW = object()  # the worker never inspects the view; identity is enough
@@ -120,8 +120,15 @@ def test_help_copy_states_the_command_and_the_token_cost():
     )
 
 
-def test_outcome_tooltip_maps_failures_and_clears_success():
-    assert outcome_tooltip(RefreshOutcome.REFRESHED) is None
-    assert outcome_tooltip(RefreshOutcome.NOT_FOUND) == "Last refresh: not_found"
-    assert outcome_tooltip(RefreshOutcome.TIMED_OUT) == "Last refresh: timed_out"
-    assert outcome_tooltip(RefreshOutcome.FAILED) == "Last refresh: failed"
+def test_outcome_notice_maps_failures_and_clears_success():
+    assert outcome_notice(RefreshOutcome.REFRESHED) is None
+    assert outcome_notice(RefreshOutcome.NOT_FOUND) == "Refresh failed: claude not found"
+    assert outcome_notice(RefreshOutcome.TIMED_OUT) == "Refresh failed: timed out"
+    assert outcome_notice(RefreshOutcome.FAILED) == ("Refresh failed: claude exited with an error")
+
+
+def test_every_outcome_has_a_notice_entry():
+    # A new RefreshOutcome member without text must fail here (KeyError),
+    # not fall through to "no line" and fail silently in the window.
+    for outcome in RefreshOutcome:
+        outcome_notice(outcome)
