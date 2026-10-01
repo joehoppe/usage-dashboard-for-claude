@@ -8,12 +8,14 @@ Each shot gets a fresh QuotaFrame: _fit_to_content never shrinks, so reusing
 one frame would carry a taller view's height into the next shot. The capture
 copies the frame's screen area, so the window must be visible and
 unobscured. On macOS the terminal running this needs Screen Recording
-permission; without it the PNGs come out blank.
+permission; without it the PNGs come out blank, which the script now reports
+on stderr and in its exit status (1 if any shot failed).
 """
 
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 import wx
@@ -74,14 +76,22 @@ def _shots() -> list[tuple[str, QuotaView, str | None]]:
     ]
 
 
-def _capture(frame: wx.Frame, path: Path) -> None:
+def _capture(frame: wx.Frame, path: Path) -> str | None:
+    """Save the frame's screen area. Returns None on success, else why it failed."""
     width, height = frame.GetClientSize()
     origin = frame.ClientToScreen(wx.Point(0, 0))
     bitmap = wx.Bitmap(width, height)
     memory = wx.MemoryDC(bitmap)
-    memory.Blit(0, 0, width, height, wx.ScreenDC(), origin.x, origin.y)
+    copied = memory.Blit(0, 0, width, height, wx.ScreenDC(), origin.x, origin.y)
     memory.SelectObject(wx.NullBitmap)
-    bitmap.SaveFile(str(path), wx.BITMAP_TYPE_PNG)
+    if not copied:
+        return "Blit from the screen failed"
+    if not bitmap.SaveFile(str(path), wx.BITMAP_TYPE_PNG):
+        return "could not save the PNG"
+    data = bytes(bitmap.ConvertToImage().GetData())
+    if data[3:] == data[:-3]:  # every pixel is the same RGB triple
+        return "capture is a single colour; likely missing macOS Screen Recording permission"
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -93,6 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     app = wx.App()
     _enable_dark_titlebar(app)  # match the real window's chrome
     pending = _shots()
+    failures: list[str] = []
 
     def next_shot() -> None:
         if not pending:
@@ -106,8 +117,11 @@ def main(argv: list[str] | None = None) -> int:
 
         def take() -> None:
             path = args.out_dir / name
-            _capture(frame, path)
+            problem = _capture(frame, path)
             print(f"{path}  window={tuple(frame.GetSize())}")
+            if problem:
+                failures.append(name)
+                print(f"FAILED {name}: {problem}", file=sys.stderr)
             # The next frame exists before this one goes, so the main loop
             # never sees zero top-level windows and exits early.
             next_shot()
@@ -117,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
 
     next_shot()
     app.MainLoop()
-    return 0
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":
