@@ -242,13 +242,12 @@ size it computes, or the button clips — the current computation asks only
 then `poller.refresh_once()` for an immediate re-read (the same guarded call
 [`poller.py`](poller.py) already uses, so a raising snapshot cannot kill the
 thread). Then marshal back via `wx.CallAfter`: show the new view, restore the
-button label, re-enable the button, and set the outcome tooltip.
+button label, re-enable the button, and record the outcome's footer line.
 
-**Outcome display.** A non-`REFRESHED` outcome becomes the button's tooltip —
-e.g. "Last refresh: not_found" — so a machine without `claude` on `PATH` does
-not fail silently. A `REFRESHED` outcome clears the tooltip. Nothing else in
-the window reports the outcome; the refreshed (or still-missing) data speaks
-for itself.
+**Outcome display.** Superseded by
+[`2026-10-01-refresh-failure-notice-design.md`](2026-10-01-refresh-failure-notice-design.md)
+§3: a non-`REFRESHED` outcome shows as an amber footer line until a refresh
+succeeds, and is written to a log file. The button carries no outcome tooltip.
 
 **Worker.** New file `ui/app/refresh.py`, mirroring `poller.py`'s structure
 (a `threading.Thread` subclass is unnecessary — each click gets a one-shot
@@ -320,7 +319,8 @@ old wording sends the user to do something that cannot work.
 
 Rev 1 appended a failed refresh's `RefreshOutcome` to this message via
 `QuotaSnapshot.detail`. That is gone: the service no longer knows refreshes
-exist, and the outcome surfaces in the button tooltip instead (§6).
+exist, and the outcome surfaces as a footer line instead (§6, amended by the
+refresh-failure-notice spec).
 
 The strings are asserted in `tests/test_ui_cli_main.py` and
 `tests/test_ui_presenter.py`; each driver's string and its test change
@@ -344,7 +344,7 @@ subprocess, no sleeping:
 
 - calls the refresher, then `read_view`, and delivers both results
 - delivers through `call_after`, never directly from the worker thread
-- delivers non-`REFRESHED` outcomes verbatim (the tooltip depends on it)
+- delivers non-`REFRESHED` outcomes verbatim (the footer line depends on it)
 - `start()` returns `False` and spawns nothing while a run is in flight
 - `start()` works again after a run completes
 

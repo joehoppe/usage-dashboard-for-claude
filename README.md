@@ -39,10 +39,13 @@ poller and exits.
 The window includes a **Refresh** button below the quota display that invokes
 `claude -p "/usage"` to refresh Claude Code's quota cache on demand. This is
 useful when the window shows "No quota data cached yet". While the refresh runs,
-the button displays "Refreshing…" and is disabled. If the refresh fails, hovering
-the button shows a tooltip indicating the outcome (e.g., "Last refresh: not_found"
-when the `claude` executable cannot be found; set `claude_executable` in
-config.toml to specify its path).
+the button displays "Refreshing…" and is disabled. If the refresh fails, an amber
+line at the bottom of the window says why: "Refresh failed: claude not found"
+(set `claude_executable` in config.toml to its path), "Refresh failed: timed
+out", or "Refresh failed: claude exited with an error". The line stays until a
+refresh succeeds; background updates do not clear it. Each failure is also
+written to a log file: `~/Library/Logs/claude-usage/claude-usage.log` on macOS,
+`%LOCALAPPDATA%\claude-usage\Logs\claude-usage.log` on Windows.
 
 A **?** button next to Refresh explains the cost: the refresh spawns a real
 (tiny) Claude session, so each click consumes a small amount of your usage
