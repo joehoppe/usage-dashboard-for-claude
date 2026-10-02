@@ -10,7 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from claude_usage.infrastructure.claude_cli import ClaudeCliRefresher, RefreshOutcome
+from claude_usage.infrastructure.claude_cli import (
+    ClaudeCliRefresher,
+    ClaudeNotFound,
+    RefreshOutcome,
+    resolve_claude,
+)
 
 
 def write_stub(tmp_path: Path, body: str) -> str:
@@ -59,6 +64,30 @@ def no_claude_on_path(monkeypatch):
         "claude_usage.infrastructure.claude_cli.shutil.which",
         lambda name, path=None: None,
     )
+
+
+# What shutil.which("claude") finds in a PATH folder on this OS.
+ON_PATH_NAME = "claude.exe" if os.name == "nt" else "claude"
+
+
+def make_runnable(path: Path) -> str:
+    """A file that passes resolve_claude's check. Resolver tests never spawn it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+    return str(path)
+
+
+def fallback_dir(home: Path) -> Path:
+    return home / ".local" / "bin"
+
+
+@pytest.fixture
+def empty_path(tmp_path):
+    """An env whose PATH is a real, empty folder — searching it finds nothing."""
+    folder = tmp_path / "empty-path"
+    folder.mkdir()
+    return {"PATH": str(folder)}
 
 
 def test_exit_zero_is_refreshed(tmp_path):
@@ -204,3 +233,95 @@ def test_child_output_is_never_logged(tmp_path, log):
     ClaudeCliRefresher(executable=exe, log=log.logger).refresh()
     assert len(log.entries) == 1
     assert all("SENTINEL" not in message for _, message in log.entries)
+
+
+def test_resolve_returns_a_runnable_configured_path(tmp_path, empty_path):
+    exe = make_runnable(tmp_path / "custom" / "claude")
+    assert resolve_claude(exe, empty_path, tmp_path) == exe
+
+
+def test_resolve_missing_configured_path_does_not_fall_back(tmp_path, empty_path):
+    make_runnable(fallback_dir(tmp_path) / "claude")
+    missing = str(tmp_path / "nope" / "claude")
+    assert resolve_claude(missing, empty_path, tmp_path) == ClaudeNotFound(
+        f"claude_executable={missing} is missing or not executable"
+    )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="on Windows X_OK reduces to existence")
+def test_resolve_configured_file_that_is_not_executable_is_not_found(tmp_path, empty_path):
+    plain = tmp_path / "claude"
+    plain.write_text("not executable\n", encoding="utf-8")
+    plain.chmod(0o644)
+    assert resolve_claude(str(plain), empty_path, tmp_path) == ClaudeNotFound(
+        f"claude_executable={plain} is missing or not executable"
+    )
+
+
+def test_resolve_configured_directory_is_not_found(tmp_path, empty_path):
+    folder = fallback_dir(tmp_path)
+    make_runnable(folder / "claude")
+    assert resolve_claude(str(folder), empty_path, tmp_path) == ClaudeNotFound(
+        f"claude_executable={folder} is missing or not executable"
+    )
+
+
+def test_resolve_bare_configured_name_is_not_found(tmp_path):
+    # Spec §4 checks the configured value as a path. A bare name is not
+    # looked up on PATH, even when PATH has it.
+    path_dir = tmp_path / "path-bin"
+    make_runnable(path_dir / ON_PATH_NAME)
+    assert resolve_claude("claude", {"PATH": str(path_dir)}, tmp_path) == ClaudeNotFound(
+        "claude_executable=claude is missing or not executable"
+    )
+
+
+def test_resolve_empty_configured_is_unset(tmp_path, empty_path):
+    expected = make_runnable(fallback_dir(tmp_path) / "claude")
+    assert resolve_claude("", empty_path, tmp_path) == expected
+
+
+def test_resolve_path_wins_over_the_fallback(tmp_path):
+    path_dir = tmp_path / "path-bin"
+    make_runnable(path_dir / ON_PATH_NAME)
+    make_runnable(fallback_dir(tmp_path) / "claude")
+    found = resolve_claude(None, {"PATH": str(path_dir)}, tmp_path)
+    # Compare folders: on Windows which() may return the PATHEXT spelling.
+    assert isinstance(found, str)
+    assert Path(found).parent == path_dir
+
+
+def test_resolve_falls_back_to_the_native_launcher(tmp_path, empty_path):
+    expected = make_runnable(fallback_dir(tmp_path) / "claude")
+    assert resolve_claude(None, empty_path, tmp_path) == expected
+
+
+def test_resolve_falls_back_to_the_windows_launcher(tmp_path, empty_path):
+    expected = make_runnable(fallback_dir(tmp_path) / "claude.exe")
+    assert resolve_claude(None, empty_path, tmp_path) == expected
+
+
+def test_resolve_dangling_launcher_symlink_is_not_found(tmp_path, empty_path):
+    link = fallback_dir(tmp_path) / "claude"
+    link.parent.mkdir(parents=True)
+    try:
+        link.symlink_to(tmp_path / "versions" / "gone")
+    except OSError:
+        pytest.skip("this OS cannot create symlinks here")
+    assert isinstance(resolve_claude(None, empty_path, tmp_path), ClaudeNotFound)
+
+
+def test_resolve_nothing_found_names_path_and_fallback(tmp_path, empty_path):
+    assert resolve_claude(None, empty_path, tmp_path) == ClaudeNotFound(
+        f"claude_executable unset; searched PATH={empty_path['PATH']}; "
+        f"fallback={fallback_dir(tmp_path)}"
+    )
+
+
+def test_resolve_nothing_without_path_says_unset(monkeypatch, tmp_path):
+    # With path=None, which() would search the process PATH, which may hold
+    # the real claude.
+    no_claude_on_path(monkeypatch)
+    assert resolve_claude(None, {}, tmp_path) == ClaudeNotFound(
+        f"claude_executable unset; searched PATH=<unset>; fallback={fallback_dir(tmp_path)}"
+    )

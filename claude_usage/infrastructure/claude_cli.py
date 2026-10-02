@@ -11,7 +11,9 @@ import os
 import shutil
 import subprocess
 from collections.abc import Mapping
+from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Protocol
 
 # Windows hands a console-subsystem child its own new console window when
@@ -34,6 +36,43 @@ class RefreshOutcome(Enum):
 
 class QuotaRefresher(Protocol):
     def refresh(self) -> RefreshOutcome: ...
+
+
+@dataclass(frozen=True)
+class ClaudeNotFound:
+    detail: str  # the log text after "refresh not_found: "
+
+
+def _is_runnable(path: str) -> bool:
+    # isfile follows symlinks, so a dangling launcher counts as missing.
+    return os.path.isfile(path) and os.access(path, os.X_OK)
+
+
+def resolve_claude(
+    configured: str | None, env: Mapping[str, str], home: Path
+) -> str | ClaudeNotFound:
+    """The `claude` to spawn, or why there is none. Never raises, never spawns.
+
+    A configured path is used only if it passes the check; it never falls
+    back. Otherwise: `PATH`, then the native installer's launcher folder.
+    Both `claude` and `claude.exe` are tried there, so no platform branch is
+    needed and either OS's CI exercises both.
+    """
+    if configured:
+        if _is_runnable(configured):
+            return configured
+        return ClaudeNotFound(f"claude_executable={configured} is missing or not executable")
+    search_path = env.get("PATH")
+    found = shutil.which("claude", path=search_path)
+    if found is not None:
+        return found
+    fallback = home / ".local" / "bin"
+    for name in ("claude", "claude.exe"):
+        candidate = str(fallback / name)
+        if _is_runnable(candidate):
+            return candidate
+    searched = "<unset>" if search_path is None else search_path
+    return ClaudeNotFound(f"claude_executable unset; searched PATH={searched}; fallback={fallback}")
 
 
 class ClaudeCliRefresher:
