@@ -18,6 +18,27 @@ show.
 
 ## Install
 
+The Refresh button needs the Claude Code CLI. Install it with the native
+installer, which puts `claude` in `~/.local/bin`
+(`%USERPROFILE%\.local\bin` on Windows), where the app finds it even when
+that folder is not on its `PATH`:
+
+```bash
+# macOS
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+```powershell
+# Windows (PowerShell)
+irm https://claude.ai/install.ps1 | iex
+```
+
+The copy of `claude` bundled inside the VS Code extension is not found:
+with only the extension installed, the window still shows quota data, but
+Refresh reports "claude not found".
+
+Then install the dashboard:
+
 ```bash
 pip install -e .
 ```
