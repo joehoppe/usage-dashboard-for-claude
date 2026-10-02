@@ -204,7 +204,9 @@ def test_which_searches_the_injected_path(tmp_path, log):
     # The logged PATH must be the PATH searched: a stub reachable only
     # through the injected PATH must be found.
     write_stub(tmp_path, "raise SystemExit(0)")
-    refresher = ClaudeCliRefresher(log=log.logger, env={"PATH": str(tmp_path)})
+    refresher = ClaudeCliRefresher(
+        log=log.logger, env={"PATH": str(tmp_path)}, home=tmp_path / "home"
+    )
     assert refresher.refresh() is RefreshOutcome.REFRESHED
 
 
