@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -106,16 +107,18 @@ def test_timeout_is_timed_out(tmp_path):
     assert refresher.refresh() is RefreshOutcome.TIMED_OUT
 
 
-def test_no_executable_resolved_is_not_found(monkeypatch):
+def test_no_executable_resolved_is_not_found(monkeypatch, tmp_path):
     no_claude_on_path(monkeypatch)
-    assert ClaudeCliRefresher().refresh() is RefreshOutcome.NOT_FOUND
+    assert ClaudeCliRefresher(home=tmp_path).refresh() is RefreshOutcome.NOT_FOUND
 
 
-def test_explicit_executable_that_cannot_spawn_is_failed(tmp_path):
-    # An explicit path is "resolved" even if broken: NOT_FOUND means only
-    # that which() found nothing; a bad spawn is FAILED (OSError branch).
+def test_explicit_executable_that_is_missing_is_not_found(tmp_path):
+    # A configured path is checked before spawning, and never falls back
+    # (lookup spec §4 step 1′) — a fallback stub here must not be used.
+    make_runnable(fallback_dir(tmp_path) / "claude")
     missing = str(tmp_path / "nope")
-    assert ClaudeCliRefresher(executable=missing).refresh() is RefreshOutcome.FAILED
+    refresher = ClaudeCliRefresher(executable=missing, home=tmp_path)
+    assert refresher.refresh() is RefreshOutcome.NOT_FOUND
 
 
 def test_argv_is_exactly_dash_p_usage(tmp_path):
@@ -173,19 +176,27 @@ def test_child_gets_no_console_window(tmp_path):
     assert json.loads(log.read_text(encoding="utf-8")) == 0
 
 
-def test_not_found_logs_the_searched_path(monkeypatch, log):
+def test_not_found_logs_the_searched_path(monkeypatch, tmp_path, log):
     no_claude_on_path(monkeypatch)
-    ClaudeCliRefresher(log=log.logger, env={"PATH": "/usr/bin:/bin"}).refresh()
+    ClaudeCliRefresher(log=log.logger, env={"PATH": "/usr/bin:/bin"}, home=tmp_path).refresh()
     assert log.entries == [
-        ("ERROR", "refresh not_found: claude_executable unset; searched PATH=/usr/bin:/bin")
+        (
+            "ERROR",
+            "refresh not_found: claude_executable unset; searched PATH=/usr/bin:/bin; "
+            f"fallback={fallback_dir(tmp_path)}",
+        )
     ]
 
 
-def test_not_found_with_no_path_says_unset(monkeypatch, log):
+def test_not_found_with_no_path_says_unset(monkeypatch, tmp_path, log):
     no_claude_on_path(monkeypatch)
-    ClaudeCliRefresher(log=log.logger, env={}).refresh()
+    ClaudeCliRefresher(log=log.logger, env={}, home=tmp_path).refresh()
     assert log.entries == [
-        ("ERROR", "refresh not_found: claude_executable unset; searched PATH=<unset>")
+        (
+            "ERROR",
+            "refresh not_found: claude_executable unset; searched PATH=<unset>; "
+            f"fallback={fallback_dir(tmp_path)}",
+        )
     ]
 
 
@@ -209,10 +220,12 @@ def test_nonzero_exit_logs_the_code_and_executable(tmp_path, log):
     assert log.entries == [("ERROR", f"refresh failed: exit code 3: executable={exe}")]
 
 
-def test_spawn_failure_logs_only_the_exception_type(tmp_path, log):
+def test_missing_configured_executable_logs_not_found(tmp_path, log):
     missing = str(tmp_path / "nope")
-    ClaudeCliRefresher(executable=missing, log=log.logger).refresh()
-    assert log.entries == [("ERROR", f"refresh failed: FileNotFoundError: executable={missing}")]
+    ClaudeCliRefresher(executable=missing, log=log.logger, home=tmp_path).refresh()
+    assert log.entries == [
+        ("ERROR", f"refresh not_found: claude_executable={missing} is missing or not executable")
+    ]
 
 
 def test_success_logs_nothing(tmp_path, log):
@@ -325,3 +338,34 @@ def test_resolve_nothing_without_path_says_unset(monkeypatch, tmp_path):
     assert resolve_claude(None, {}, tmp_path) == ClaudeNotFound(
         f"claude_executable unset; searched PATH=<unset>; fallback={fallback_dir(tmp_path)}"
     )
+
+
+def write_unrunnable(tmp_path: Path) -> str:
+    """Passes the lookup's check, but the OS refuses to run it: no shebang on
+    POSIX (ENOEXEC), not a PE image on Windows."""
+    exe = tmp_path / ("claude.exe" if os.name == "nt" else "claude")
+    exe.write_bytes(b"this is not a program\n")
+    exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
+    return str(exe)
+
+
+def test_found_executable_that_cannot_run_is_failed(tmp_path, log):
+    # Found but unrunnable is still FAILED, logged by exception type only.
+    exe = write_unrunnable(tmp_path)
+    refresher = ClaudeCliRefresher(executable=exe, log=log.logger, home=tmp_path)
+    assert refresher.refresh() is RefreshOutcome.FAILED
+    [(level, message)] = log.entries
+    assert level == "ERROR"
+    assert re.fullmatch(rf"refresh failed: \w+: executable={re.escape(exe)}", message)
+
+
+@pytest.mark.skipif(
+    os.name == "nt", reason="write_stub makes claude.cmd, which is not a fallback name"
+)
+def test_fallback_launcher_is_spawned_when_path_has_none(tmp_path, empty_path):
+    home = tmp_path / "home"
+    launcher_dir = fallback_dir(home)
+    launcher_dir.mkdir(parents=True)
+    write_stub(launcher_dir, "raise SystemExit(0)")
+    refresher = ClaudeCliRefresher(env=empty_path, home=home)
+    assert refresher.refresh() is RefreshOutcome.REFRESHED

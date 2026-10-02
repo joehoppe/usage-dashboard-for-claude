@@ -82,11 +82,13 @@ class ClaudeCliRefresher:
         timeout_seconds: int = 60,
         log: logging.Logger | None = None,
         env: Mapping[str, str] = os.environ,
+        home: Path | None = None,
     ) -> None:
         self._executable = executable
         self._timeout_seconds = timeout_seconds
         self._log = log
         self._env = env
+        self._home = Path.home() if home is None else home
 
     def refresh(self) -> RefreshOutcome:
         """Never raises: this runs on the refresh worker thread, where an
@@ -97,13 +99,9 @@ class ClaudeCliRefresher:
         from what the app already holds: never the child's output, and never
         an exception's message — only its type name.
         """
-        search_path = self._env.get("PATH")
-        exe = self._executable or shutil.which("claude", path=search_path)
-        if exe is None:
-            self._error(
-                "refresh not_found: claude_executable unset; searched PATH=%s",
-                "<unset>" if search_path is None else search_path,
-            )
+        exe = resolve_claude(self._executable, self._env, self._home)
+        if isinstance(exe, ClaudeNotFound):
+            self._error("refresh not_found: %s", exe.detail)
             return RefreshOutcome.NOT_FOUND
         try:
             completed = subprocess.run(
