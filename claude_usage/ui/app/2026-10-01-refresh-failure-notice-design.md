@@ -278,14 +278,12 @@ With the app's `PATH` missing `claude` (the §1 setup):
 
 ## 10. Risks
 
-- **A wrong `claude_executable` reads as "exited with an error".** When
-  `claude_executable` is set, the refresher skips `shutil.which` and spawns
-  the configured path directly ([`claude_cli.py:50-66`](../../infrastructure/claude_cli.py)).
-  A bad path raises `FileNotFoundError`, which maps to `FAILED`, not
-  `NOT_FOUND`. The footer then shows `claude exited with an error`, and the
-  log entry (`refresh failed: FileNotFoundError: executable=<path>`) shows the
-  real cause. Accepted for now, because the outcome mapping belongs to the
-  follow-up lookup change.
+- **A wrong `claude_executable` reads as "exited with an error".** Resolved
+  2026-10-02 by the
+  [executable lookup spec](../../infrastructure/2026-10-02-claude-executable-lookup-design.md):
+  a configured path that is missing or not executable now returns
+  `NOT_FOUND` and logs
+  `refresh not_found: claude_executable=<path> is missing or not executable`.
 - **Narrow windows clip the line.** The longest string,
   `Refresh failed: claude exited with an error`, is 43 characters. It fits
   at the 377 px opening width (to be confirmed by screenshot, §8), but may
