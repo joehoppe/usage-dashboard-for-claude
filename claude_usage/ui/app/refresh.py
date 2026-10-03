@@ -29,14 +29,22 @@ HELP_DIALOG_MESSAGE = (
 )
 
 
-def outcome_tooltip(outcome: RefreshOutcome) -> str | None:
-    """The button's whole outcome display: failures become a tooltip so a
-    machine without `claude` on PATH does not fail silently; success clears
-    it — the refreshed data speaks for itself.
+# Footer copy per outcome (refresh-failure-notice spec §3). Every member has
+# an entry, so a new outcome without text raises KeyError instead of quietly
+# showing nothing.
+_NOTICES: dict[RefreshOutcome, str | None] = {
+    RefreshOutcome.REFRESHED: None,
+    RefreshOutcome.NOT_FOUND: "Refresh failed: claude not found",
+    RefreshOutcome.TIMED_OUT: "Refresh failed: timed out",
+    RefreshOutcome.FAILED: "Refresh failed: claude exited with an error",
+}
+
+
+def outcome_notice(outcome: RefreshOutcome) -> str | None:
+    """The amber footer line for a refresh outcome. None clears the line:
+    after a success the refreshed data speaks for itself.
     """
-    if outcome is RefreshOutcome.REFRESHED:
-        return None
-    return f"Last refresh: {outcome.value}"
+    return _NOTICES[outcome]
 
 
 class RefreshWorker:

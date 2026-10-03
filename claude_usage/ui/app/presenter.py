@@ -53,6 +53,7 @@ class QuotaView:
     notices: tuple[str, ...]
     message: str | None        # set only when there are no bars to show
     message_detail: str | None
+    refresh_failure: str | None = None  # "Refresh failed: timed out"; set only by QuotaFrame
     # fmt: on
 
 

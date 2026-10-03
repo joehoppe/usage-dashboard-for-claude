@@ -6,9 +6,14 @@ account details.
 
 from __future__ import annotations
 
+import logging
+import os
 import shutil
 import subprocess
+from collections.abc import Mapping
+from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Protocol
 
 # Windows hands a console-subsystem child its own new console window when
@@ -33,22 +38,70 @@ class QuotaRefresher(Protocol):
     def refresh(self) -> RefreshOutcome: ...
 
 
+@dataclass(frozen=True)
+class ClaudeNotFound:
+    detail: str  # the log text after "refresh not_found: "
+
+
+def _is_runnable(path: str) -> bool:
+    # isfile follows symlinks, so a dangling launcher counts as missing.
+    return os.path.isfile(path) and os.access(path, os.X_OK)
+
+
+def resolve_claude(
+    configured: str | None, env: Mapping[str, str], home: Path
+) -> str | ClaudeNotFound:
+    """The `claude` to spawn, or why there is none. Never raises, never spawns.
+
+    A configured path is used only if it passes the check; it never falls
+    back. Otherwise: `PATH`, then the native installer's launcher folder.
+    Both `claude` and `claude.exe` are tried there, so no platform branch is
+    needed and either OS's CI exercises both.
+    """
+    if configured:
+        if _is_runnable(configured):
+            return configured
+        return ClaudeNotFound(f"claude_executable={configured} is missing or not executable")
+    search_path = env.get("PATH")
+    found = shutil.which("claude", path=search_path)
+    if found is not None:
+        return found
+    fallback = home / ".local" / "bin"
+    for name in ("claude", "claude.exe"):
+        candidate = str(fallback / name)
+        if _is_runnable(candidate):
+            return candidate
+    searched = "<unset>" if search_path is None else search_path
+    return ClaudeNotFound(f"claude_executable unset; searched PATH={searched}; fallback={fallback}")
+
+
 class ClaudeCliRefresher:
     def __init__(
         self,
         executable: str | None = None,
         timeout_seconds: int = 60,
+        log: logging.Logger | None = None,
+        env: Mapping[str, str] = os.environ,
+        home: Path | None = None,
     ) -> None:
         self._executable = executable
         self._timeout_seconds = timeout_seconds
+        self._log = log
+        self._env = env
+        self._home = Path.home() if home is None else home
 
     def refresh(self) -> RefreshOutcome:
         """Never raises: this runs on the refresh worker thread, where an
         escaping exception would die silently and wedge the button on
         "Refreshing…" — every failure mode is a return value.
+
+        Each failure writes one ERROR entry to the injected log, built only
+        from what the app already holds: never the child's output, and never
+        an exception's message — only its type name.
         """
-        exe = self._executable or shutil.which("claude")
-        if exe is None:
+        exe = resolve_claude(self._executable, self._env, self._home)
+        if isinstance(exe, ClaudeNotFound):
+            self._error("refresh not_found: %s", exe.detail)
             return RefreshOutcome.NOT_FOUND
         try:
             completed = subprocess.run(
@@ -61,9 +114,16 @@ class ClaudeCliRefresher:
                 check=False,
             )
         except subprocess.TimeoutExpired:
+            self._error("refresh timed_out after %ss: executable=%s", self._timeout_seconds, exe)
             return RefreshOutcome.TIMED_OUT
-        except OSError:
+        except OSError as exc:
+            self._error("refresh failed: %s: executable=%s", type(exc).__name__, exe)
             return RefreshOutcome.FAILED
         if completed.returncode == 0:
             return RefreshOutcome.REFRESHED
+        self._error("refresh failed: exit code %s: executable=%s", completed.returncode, exe)
         return RefreshOutcome.FAILED
+
+    def _error(self, message: str, *args: object) -> None:
+        if self._log is not None:
+            self._log.error(message, *args)

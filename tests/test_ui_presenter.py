@@ -166,3 +166,9 @@ def test_present_error_returns_read_error_shaped_view():
     assert view.message == "Couldn't read quota data"
     assert view.message_detail == "RuntimeError"
     assert view.bars == ()
+
+
+def test_presenter_never_sets_a_refresh_failure():
+    # Only QuotaFrame overlays it: the poller knows nothing about refreshes.
+    assert present(make_snapshot([make_limit()]), Config()).refresh_failure is None
+    assert present_error(RuntimeError("boom")).refresh_failure is None

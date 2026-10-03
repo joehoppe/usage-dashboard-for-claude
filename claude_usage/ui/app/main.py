@@ -5,6 +5,7 @@ QuotaFrame -> wx.MainLoop. Config is read once at startup, not per poll.
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 import wx
@@ -14,10 +15,11 @@ from claude_usage.infrastructure.claude_cli import ClaudeCliRefresher
 from claude_usage.infrastructure.claude_json import ClaudeJsonQuotaSource
 from claude_usage.infrastructure.clock import SystemClock
 from claude_usage.infrastructure.config import TomlConfigSource
+from claude_usage.infrastructure.log_file import default_log_path, open_refresh_log
 from claude_usage.ui.app.frame import QuotaFrame
 from claude_usage.ui.app.icon import attach_app_icon, set_app_user_model_id
 from claude_usage.ui.app.poller import PollerThread
-from claude_usage.ui.app.refresh import RefreshWorker, outcome_tooltip
+from claude_usage.ui.app.refresh import RefreshWorker, outcome_notice
 
 _JOIN_TIMEOUT_SECONDS = 2.0
 
@@ -92,13 +94,15 @@ def main(argv: list[str] | None = None) -> int:
     poller = PollerThread(service, config, on_view=frame.show_view)
 
     def deliver(view, outcome) -> None:
+        # Record the outcome first so the new view renders with it in one pass.
+        frame.end_refresh(outcome_notice(outcome))
         frame.show_view(view)
-        frame.end_refresh(outcome_tooltip(outcome))
 
     worker = RefreshWorker(
         ClaudeCliRefresher(
             executable=config.claude_executable,
             timeout_seconds=config.refresh_timeout_seconds,
+            log=open_refresh_log(default_log_path(os.environ, Path.home())),
         ),
         read_view=poller.refresh_once,
         deliver=deliver,

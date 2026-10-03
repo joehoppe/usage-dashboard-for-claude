@@ -18,6 +18,27 @@ show.
 
 ## Install
 
+The Refresh button needs the Claude Code CLI. Install it with the native
+installer, which puts `claude` in `~/.local/bin`
+(`%USERPROFILE%\.local\bin` on Windows), where the app finds it even when
+that folder is not on its `PATH`:
+
+```bash
+# macOS
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+```powershell
+# Windows (PowerShell)
+irm https://claude.ai/install.ps1 | iex
+```
+
+The copy of `claude` bundled inside the VS Code extension is not found:
+with only the extension installed, the window still shows quota data, but
+Refresh reports "claude not found".
+
+Then install the dashboard:
+
 ```bash
 pip install -e .
 ```
@@ -39,10 +60,15 @@ poller and exits.
 The window includes a **Refresh** button below the quota display that invokes
 `claude -p "/usage"` to refresh Claude Code's quota cache on demand. This is
 useful when the window shows "No quota data cached yet". While the refresh runs,
-the button displays "Refreshing…" and is disabled. If the refresh fails, hovering
-the button shows a tooltip indicating the outcome (e.g., "Last refresh: not_found"
-when the `claude` executable cannot be found; set `claude_executable` in
-config.toml to specify its path).
+the button displays "Refreshing…" and is disabled. If the refresh fails, an amber
+line at the bottom of the window says why: "Refresh failed: claude not found",
+"Refresh failed: timed out", or "Refresh failed: claude exited with an error".
+The line stays until a refresh succeeds; background updates do not clear it.
+To find `claude`, the app looks on its `PATH` and then in `~/.local/bin`
+(`%USERPROFILE%\.local\bin` on Windows), where the native installer puts it;
+`claude_executable` in config.toml overrides both. Each failure is also
+written to a log file: `~/Library/Logs/claude-usage/claude-usage.log` on macOS,
+`%LOCALAPPDATA%\claude-usage\Logs\claude-usage.log` on Windows.
 
 A **?** button next to Refresh explains the cost: the refresh spawns a real
 (tiny) Claude session, so each click consumes a small amount of your usage
@@ -72,7 +98,7 @@ failing.
 | `poll_seconds`            | 10      | 1–600  | seconds between background refreshes      |
 | `stale_after_minutes`     | 15      | 1–1440 | reading age at which the view marks STALE |
 | `refresh_timeout_seconds` | 60      | 5–600  | timeout in seconds for the Refresh button's `claude -p "/usage"` subprocess |
-| `claude_executable`       | absent  | string | explicit path to the `claude` executable for the Refresh button; if unset, resolved from `PATH` |
+| `claude_executable`       | absent  | string | explicit path to the `claude` executable for the Refresh button; if unset, resolved from `PATH`, then `~/.local/bin` |
 
 ```toml
 poll_seconds = 30
