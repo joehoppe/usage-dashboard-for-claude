@@ -13,7 +13,7 @@ test = ["pytest", "pytest-cov"]
 # ruff is MIT. Pinned exactly so a new release cannot turn a green branch
 # red on its own; dependabot's pip ecosystem raises the bump as a review.
 # CI reads this pin back out of the file, so it is the only copy.
-dev = ["ruff==0.16.8"]
+dev = ["ruff==0.16.9"]
 
 [project.scripts]
 claude-usage = "claude_usage.ui.cli.main:main"
