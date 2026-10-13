@@ -56,7 +56,10 @@ extend-exclude = ["sample", "*.md"]
 # E/W/F is the pyflakes + pycodestyle base. I keeps the import ordering
 # the code already follows from drifting, UP keeps syntax current with the
 # 3.11 floor, and B/SIM/C4/RUF catch the mistakes that survive review.
-select = ["E", "W", "F", "I", "UP", "B", "SIM", "C4", "RUF"]
+# D100 alone from pydocstyle: every module says what it is for. Class and
+# function docstrings are a review guideline (AGENTS.md), not a lint rule,
+# because most dataclasses and ports are fully described by their names.
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "C4", "RUF", "D100"]
 # Comments here are prose, and prose uses real punctuation: an en dash in
 # "clamped to 0–100" is correct typography, not a mistyped hyphen.
 ignore = ["RUF003"]
@@ -65,7 +68,10 @@ ignore = ["RUF003"]
 # SIM300 reads any NAME_IN_CAPS as a literal and asks for the comparison to
 # be flipped. In a test the constant under test belongs on the left, where
 # "assert actual == expected" puts it, so the rule is backwards here.
-"tests/*" = ["SIM300"]
+#
+# D100 asks a test module what it is for, but test_<layer>_<module>.py
+# already names the module under test, so a docstring would only repeat it.
+"tests/*" = ["SIM300", "D100"]
 
 [tool.coverage.run]
 source = ["claude_usage"]

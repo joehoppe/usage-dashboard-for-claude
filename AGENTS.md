@@ -94,6 +94,28 @@ say why on the same line. If a rule is wrong about the codebase as a whole,
 it belongs in `ignore` or `per-file-ignores` with a comment, not scattered
 across the files it misjudges.
 
+## Docstrings
+
+Every module gets a one-line docstring saying what it is for. ruff enforces
+this (`D100`); test modules are exempt, since their file name already names
+the module under test.
+
+Give a class a docstring when its role isn't obvious from its name and
+signature, which means always for:
+
+- application services and use cases: who calls them, what they
+  orchestrate, and any state they keep between calls
+- infrastructure adapters: which port they implement and what external
+  format or location they read
+- UI drivers and composition roots: what they wire together
+
+Frozen dataclasses, enums and `Protocol` ports can skip it when the
+field and method names say everything. Explain non-obvious fields or
+members with a trailing comment instead.
+
+Write about behavior and intent: why it exists, what it guarantees,
+what it does on failure. Don't restate the signature.
+
 ## Spec Documents
 
 Markdown spec documents should be saved in the folder in which it will likely be implemented, and committed alongside the code.

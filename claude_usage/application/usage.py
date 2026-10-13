@@ -1,3 +1,5 @@
+"""The refresh use case: one QuotaSource read -> one QuotaSnapshot."""
+
 from __future__ import annotations
 
 from datetime import timedelta
@@ -12,6 +14,19 @@ from claude_usage.domain.quota import (
 
 
 class UsageService:
+    """Turns raw quota reads into the snapshots the UI renders.
+
+    It is the single seam between the drivers and everything below them:
+    the CLI calls snapshot() once, the GUI's PollerThread calls it every
+    poll. Each call reads the injected QuotaSource, timestamps the result
+    with the injected Clock, and decides staleness, so widgets only ever
+    render a finished QuotaSnapshot and never compute one.
+
+    The only state it keeps is the last good reading. A transient
+    READ_ERROR (e.g. ~/.claude.json caught mid-write) shows that reading
+    marked stale instead of blanking the display.
+    """
+
     def __init__(
         self,
         quota_source: QuotaSource,
@@ -24,6 +39,7 @@ class UsageService:
         self._last_good: QuotaReading | None = None
 
     def snapshot(self) -> QuotaSnapshot:
+        """Read the quota once and package it, with a fallback, for display."""
         now = self._clock.now()
         result = self._quota_source.read_quota()
 

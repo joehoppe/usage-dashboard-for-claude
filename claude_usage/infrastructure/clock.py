@@ -1,3 +1,5 @@
+"""Clock adapter over the system clock; always returns aware UTC."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
