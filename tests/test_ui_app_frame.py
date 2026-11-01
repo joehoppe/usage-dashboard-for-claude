@@ -8,7 +8,10 @@ rather than the module's own constant — importing the constant would make
 the assertion agree with any value frame.py happens to hold.
 """
 
+import sys
+
 import pytest
+import wx
 
 from claude_usage.ui.app.frame import QuotaFrame
 from claude_usage.ui.app.presenter import BarView, QuotaView
@@ -108,3 +111,30 @@ def test_the_failure_line_grows_the_minimum_height_by_one_line(frame, view):
     frame.end_refresh(FAILURE)
     frame.show_view(view)
     assert frame.GetMinClientSize().height - without == NOTICE_HEIGHT
+
+
+def test_window_has_no_os_caption_but_stays_on_top_and_minimisable(frame):
+    style = frame.GetWindowStyleFlag()
+    assert not style & wx.CAPTION
+    assert style & wx.STAY_ON_TOP
+    assert style & wx.SYSTEM_MENU  # taskbar "Close window"
+    assert not style & wx.FRAME_NO_TASKBAR
+    assert not style & wx.FRAME_TOOL_WINDOW
+
+
+def test_context_menu_offers_minimise_then_close(frame):
+    menu = frame.context_menu()
+    labels = [item.GetItemLabelText() for item in menu.GetMenuItems()]
+    assert labels == ["Minimise", "Close"]
+    menu.Destroy()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="checks the native Win32 style")
+def test_native_window_has_no_title_bar(frame):
+    # wx reports no CAPTION flag even when MSW adds WS_CAPTION behind its
+    # back (MINIMIZE_BOX does), so ask Windows itself.
+    import ctypes
+
+    ws_caption = 0x00C00000
+    style = ctypes.windll.user32.GetWindowLongW(frame.GetHandle(), -16)
+    assert not style & ws_caption
