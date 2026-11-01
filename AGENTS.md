@@ -118,5 +118,7 @@ what it does on failure. Don't restate the signature.
 
 ## Spec Documents
 
-Markdown spec documents should be saved in the folder in which it will likely be implemented, and committed alongside the code.
-When and if the feature itself is removed, the spec should also be removed.
+Design doc files live next to the feature they describe, in the folder where
+it is implemented. There are no overarching design docs.
+When and if the feature itself is removed, its design doc should also be
+removed.
