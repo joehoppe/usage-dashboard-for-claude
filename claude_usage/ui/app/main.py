@@ -24,6 +24,16 @@ from claude_usage.ui.app.refresh import RefreshWorker, outcome_notice
 _JOIN_TIMEOUT_SECONDS = 2.0
 
 
+class _App(wx.App):
+    """wx.App that restores the strip on a Dock-icon click (macOS), the way
+    back from minimise when a borderless window could only hide."""
+
+    def MacReopenApp(self) -> None:
+        frame = self.GetTopWindow()
+        if isinstance(frame, QuotaFrame):
+            frame.restore()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="claude-usage-app",
@@ -76,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
         ClaudeJsonQuotaSource(args.path), SystemClock(), stale_after=config.stale_after
     )
 
-    app = wx.App()
+    app = _App()
     _enable_dark_titlebar(app)
 
     def on_refresh() -> None:

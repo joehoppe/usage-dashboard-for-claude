@@ -7,6 +7,7 @@ calls Raise()/SetFocus()).
 from __future__ import annotations
 
 import dataclasses
+import sys
 from collections.abc import Callable
 
 import wx
@@ -24,6 +25,14 @@ _MIN_WIDTH = 240
 # view needs (see below).
 _DEFAULT_SIZE = (377, 216)
 _BUTTON_MARGIN = 8
+# Frameless, but still a real top-level window. SYSTEM_MENU gives the
+# Windows taskbar button its "Close window" item and lets the taskbar
+# restore a minimised strip. No MINIMIZE_BOX: on MSW it makes wx add
+# WS_CAPTION, bringing the title bar back; Iconize() works without it. No
+# FRAME_TOOL_WINDOW or FRAME_NO_TASKBAR: the taskbar button and Dock icon
+# are how a minimised strip comes back. FRAME_SHAPED allows the rounded
+# outline.
+_STYLE = wx.BORDER_NONE | wx.STAY_ON_TOP | wx.SYSTEM_MENU | wx.FRAME_SHAPED
 # Extra horizontal breathing room for the exact-fit "?" button.
 _HELP_BUTTON_PADDING = 6
 
@@ -38,7 +47,7 @@ class QuotaFrame(wx.Frame):
             None,
             title="Usage Dashboard for Claude",
             size=_DEFAULT_SIZE,
-            style=wx.DEFAULT_FRAME_STYLE | wx.STAY_ON_TOP,
+            style=_STYLE,
         )
         self.SetBackgroundColour(wx.Colour(*theme.BACKGROUND))
         self._on_close = on_close
@@ -98,6 +107,40 @@ class QuotaFrame(wx.Frame):
         sizer.Add(self.panel, 1, wx.EXPAND)
         self.SetSizer(sizer)
         self.Bind(wx.EVT_CLOSE, self._handle_close)
+        self.Bind(wx.EVT_CONTEXT_MENU, self._show_context_menu)
+        self.panel.Bind(wx.EVT_CONTEXT_MENU, self._show_context_menu)
+
+    def minimise(self) -> None:
+        """Send the strip to the taskbar or Dock.
+
+        macOS refuses to miniaturise a borderless window, so there the strip
+        hides instead and a Dock-icon click (main._App.MacReopenApp) brings
+        it back: out of the way, back with one click, either way.
+        """
+        self.Iconize(True)
+        if sys.platform == "darwin" and not self.IsIconized():
+            self.Hide()
+
+    def restore(self) -> None:
+        if self.IsIconized():
+            self.Iconize(False)
+        if not self.IsShown():
+            self.ShowWithoutActivating()
+
+    def context_menu(self) -> wx.Menu:
+        """Right-click menu. It replaces close-on-right-click so a stray
+        right-click can't quit the app."""
+        menu = wx.Menu()
+        minimise = menu.Append(wx.ID_ANY, "Minimise")
+        close = menu.Append(wx.ID_ANY, "Close")
+        menu.Bind(wx.EVT_MENU, lambda event: self.minimise(), minimise)
+        menu.Bind(wx.EVT_MENU, lambda event: self.Close(), close)
+        return menu
+
+    def _show_context_menu(self, event: wx.ContextMenuEvent) -> None:
+        menu = self.context_menu()
+        self.PopupMenu(menu)
+        menu.Destroy()
 
     def begin_refresh(self) -> None:
         """The disabled button is the entire in-progress UI (design §6)."""
