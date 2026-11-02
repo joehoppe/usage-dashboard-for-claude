@@ -24,10 +24,21 @@ def _contrast(a: tuple[int, int, int], b: tuple[int, int, int]) -> float:
 def _all_colors():
     return [
         theme.BACKGROUND,
+        theme.BORDER,
+        theme.BORDER_STALE,
+        theme.BORDER_CRITICAL,
         theme.TEXT_PRIMARY,
         theme.TEXT_SECONDARY,
+        theme.TEXT_FAINT,
         theme.TRACK,
-        theme.STALE_FILL,
+        theme.STALE_DOT,
+        theme.HATCH_STRIPE,
+        theme.HATCH_GROUND,
+        theme.BUTTON_FILL,
+        theme.BUTTON_BORDER,
+        theme.BUTTON_GLYPH,
+        theme.BUTTON_HOVER_BORDER,
+        theme.GRIP,
         *theme.SEVERITY_FILLS.values(),
     ]
 
@@ -48,6 +59,16 @@ def test_primary_text_has_aaa_contrast_on_background():
 
 def test_secondary_text_has_aa_contrast_on_background():
     assert _contrast(theme.TEXT_SECONDARY, theme.BACKGROUND) >= 4.5
+
+
+def test_faint_text_stays_readable():
+    # Stale numbers are dimmed, not hidden.
+    assert _contrast(theme.TEXT_FAINT, theme.BACKGROUND) >= 4.5
+
+
+def test_severity_and_glyph_text_pass_aa_on_background():
+    for rgb in (*theme.SEVERITY_FILLS.values(), theme.BUTTON_GLYPH):
+        assert _contrast(rgb, theme.BACKGROUND) >= 4.5
 
 
 def test_severity_fills_cover_all_presenter_severities():
