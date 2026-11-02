@@ -91,9 +91,9 @@ def main(argv: list[str] | None = None) -> int:
 
     def on_refresh() -> None:
         # Closes over `worker`, assigned below — safe because the callback
-        # only fires on a button click, after wiring completes. If start()
-        # is refused (a run is in flight), the in-flight run's delivery
-        # re-enables the button.
+        # only fires on a ↻ click, after wiring completes. The frame ignores
+        # clicks while a run is in flight; if start() is refused anyway, the
+        # in-flight run's delivery ends the refreshing state.
         frame.begin_refresh()
         worker.start()
 

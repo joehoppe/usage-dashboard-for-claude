@@ -28,6 +28,7 @@ PERCENT_W = 26
 RESET_MIN = 68
 DEFAULT_WIDTH = 310
 GRIP = 6
+GRIP_INSET = 2  # clear of the 6 px rounded corner, which clips the window
 DOT = 4
 
 _ACTIVE_MARK = " ●"
@@ -154,8 +155,13 @@ def layout(view: QuotaView, size: tuple[int, int], hovered: bool, measure: Measu
         message_ys=tuple(message_ys),
         footer_ys=tuple(footer_ys),
         footer_width=right - left,
-        grip=Rect(width - BORDER - GRIP, height - BORDER - GRIP, GRIP, GRIP) if hovered else None,
+        grip=_grip(width, height) if hovered else None,
     )
+
+
+def _grip(width: int, height: int) -> Rect:
+    inset = BORDER + GRIP_INSET
+    return Rect(width - inset - GRIP, height - inset - GRIP, GRIP, GRIP)
 
 
 def hit(strip: StripLayout, x: int, y: int) -> str | None:

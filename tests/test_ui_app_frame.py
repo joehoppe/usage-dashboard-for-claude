@@ -1,11 +1,11 @@
-"""QuotaFrame startup-size tests.
+"""QuotaFrame and QuotaPanel tests.
 
 Constructing a frame needs a wx.App — conftest's shared `wx_app`, never a
 local one: a same-named module fixture is a *distinct* fixture and would
 build a second app in the process. The frame is never Show()n, so nothing
-appears on screen. The expected size is asserted against literals
-rather than the module's own constant — importing the constant would make
-the assertion agree with any value frame.py happens to hold.
+appears on screen. Sizes are asserted against literals rather than
+strip_layout's constants — importing them would make the assertions agree
+with any value the module happens to hold.
 """
 
 import dataclasses
@@ -18,19 +18,16 @@ from claude_usage.ui.app.frame import QuotaFrame
 from claude_usage.ui.app.panels import QuotaPanel
 from claude_usage.ui.app.presenter import BarView, QuotaView
 
-# The window is a glanceable side panel, not a document window: it opens
-# narrow enough to park beside real work.
-EXPECTED_SIZE = (377, 216)
 
-
-def make_view(bars=3, notices=("+50% weekly limits promo through Sep 13",)):
+def make_view(bars=3, notices=("+50% weekly limits promo through Sep 13",), labels=None):
+    labels = list(labels or ())
     return QuotaView(
         headline="66% used",
         age_text="as of 7m ago",
         stale=False,
         bars=tuple(
             BarView(
-                label=f"Limit {index}",
+                label=labels[index] if index < len(labels) else f"Limit {index}",
                 percent=10,
                 used=10,
                 severity="normal",
@@ -52,20 +49,9 @@ def frame(wx_app):
     frame.Destroy()
 
 
-def test_opens_at_the_narrow_default_size(frame):
-    assert tuple(frame.GetSize()) == EXPECTED_SIZE
-
-
-def test_rendering_a_view_never_widens_the_window(frame):
-    # _fit_to_content grows height only; a view must not undo the narrow
-    # opening width by pushing the window back out.
-    frame.show_view(make_view())
-    assert frame.GetSize().width == EXPECTED_SIZE[0]
-
-
 FAILURE = "Refresh failed: claude not found"
-# _NOTICE_HEIGHT in panels.py, as a literal for the same reason as EXPECTED_SIZE.
-NOTICE_HEIGHT = 16
+NOTICE_HEIGHT = 12  # ROW_H in strip_layout.py, as a literal (see module docstring)
+FOOTER_GAP = 2  # opens the footer when the failure is its first line
 
 
 def make_message_view(detail=None):
@@ -75,7 +61,7 @@ def make_message_view(detail=None):
         stale=True,
         bars=(),
         notices=(),
-        message="No quota data cached yet — click Refresh",
+        message="No quota data cached yet — click ↻",
         message_detail=detail,
     )
 
@@ -97,22 +83,65 @@ def test_a_successful_refresh_clears_the_failure_for_later_polls(frame):
     assert frame.panel._view.refresh_failure is None
 
 
-def test_a_failed_refresh_leaves_no_button_tooltip(frame):
-    frame.end_refresh(FAILURE)
-    assert frame._refresh_button.GetToolTip() is None
-
-
 @pytest.mark.parametrize(
-    "view",
-    [make_view(), make_message_view(), make_message_view(detail="RuntimeError")],
+    ("view", "grows_by"),
+    [
+        (make_view(), NOTICE_HEIGHT),
+        # No notices: the failure opens the footer, so the gap comes too.
+        (make_message_view(), FOOTER_GAP + NOTICE_HEIGHT),
+        (make_message_view(detail="RuntimeError"), FOOTER_GAP + NOTICE_HEIGHT),
+    ],
     ids=["bars", "message", "message-with-detail"],
 )
-def test_the_failure_line_grows_the_minimum_height_by_one_line(frame, view):
+def test_the_failure_line_grows_the_minimum_height_by_one_line(frame, view, grows_by):
     frame.show_view(view)
-    without = frame.GetMinClientSize().height
+    without = frame.GetMinSize().height
     frame.end_refresh(FAILURE)
     frame.show_view(view)
-    assert frame.GetMinClientSize().height - without == NOTICE_HEIGHT
+    assert frame.GetMinSize().height - without == frame.FromDIP(grows_by)
+
+
+def test_three_limits_open_at_310_by_63(frame):
+    frame.show_view(make_view(bars=3, notices=()))
+    assert tuple(frame.GetSize()) == tuple(frame.FromDIP(wx.Size(310, 63)))
+
+
+def test_grows_to_fit_but_never_shrinks(frame):
+    frame.show_view(make_view(notices=("a", "b")))
+    tall = frame.GetSize().height
+    frame.show_view(make_view(notices=()))
+    assert frame.GetSize().height == tall
+
+
+def test_long_label_widens_the_frame(frame):
+    frame.show_view(make_view(labels=["Weekly Claude Opus 4.1 Preview"]))
+    assert frame.GetSize().width > frame.FromDIP(310)
+
+
+def test_refresh_marks_the_view_refreshing_until_it_ends(frame):
+    frame.show_view(make_view())
+    frame.begin_refresh()
+    assert frame.panel._view.refreshing is True
+    frame.end_refresh(None)
+    frame.show_view(make_view())
+    assert frame.panel._view.refreshing is False
+
+
+def test_refresh_click_while_refreshing_does_nothing(wx_app):
+    # Review Focus 3: a second click must not start a second run.
+    calls = []
+    frame = QuotaFrame(on_close=lambda: None, on_refresh=lambda: calls.append(1))
+    frame.show_view(make_view())
+    frame._on_button("refresh")
+    frame.begin_refresh()
+    frame._on_button("refresh")
+    assert calls == [1]
+    frame.Destroy()
+
+
+def test_hover_reaches_the_panel(frame):
+    frame.set_hovered(True)
+    assert frame.panel.hovered is True
 
 
 def test_window_has_no_os_caption_but_stays_on_top_and_minimisable(frame):
