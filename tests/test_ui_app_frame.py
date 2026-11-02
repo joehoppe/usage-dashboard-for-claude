@@ -184,3 +184,19 @@ def test_panel_paints_every_view_shape(wx_app, view):
     panel._paint(dc)
     dc.SelectObject(wx.NullBitmap)
     parent.Destroy()
+
+
+def test_the_live_paint_handler_raises_nothing(wx_app, monkeypatch):
+    # The bitmap test above skips _on_paint's own DC; a wrong DC type there
+    # fails every real paint while every other test stays green. wx reports
+    # handler exceptions through sys.excepthook, so collect them.
+    errors = []
+    monkeypatch.setattr(sys, "excepthook", lambda *exc_info: errors.append(exc_info))
+    frame = QuotaFrame(on_close=lambda: None)
+    frame.show_view(make_view())
+    frame.Show()
+    frame.panel.Refresh()
+    frame.panel.Update()
+    wx.Yield()
+    frame.Destroy()
+    assert errors == []

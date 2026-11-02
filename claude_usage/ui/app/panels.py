@@ -152,7 +152,9 @@ class QuotaPanel(wx.Panel):
     # -- painting ----------------------------------------------------------
 
     def _on_paint(self, event: wx.PaintEvent) -> None:
-        paint_dc = wx.AutoBufferedPaintDC(self)
+        # BufferedPaintDC is a MemoryDC, which GCDC accepts; AutoBufferedPaintDC
+        # is not, on MSW.
+        paint_dc = wx.BufferedPaintDC(self)
         self._paint(paint_dc)
 
     def _paint(self, target: wx.DC) -> None:
