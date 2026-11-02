@@ -30,3 +30,16 @@ def coarse(delta: timedelta) -> str:
     if total < 86400:
         return f"{total // 3600}h"
     return f"{total // 86400}d"
+
+
+def coarse_pair(delta: timedelta) -> str:
+    """Like coarse(), but a day or more keeps the hours too: "1d 4h".
+
+    Under a day it stays hours only ("3h", not "3h 40m") so "resets …"
+    always fits the compact strip's reset column.
+    """
+    total = int(delta.total_seconds())
+    if total < 86400:
+        return coarse(delta)
+    days, hours = total // 86400, total % 86400 // 3600
+    return f"{days}d {hours}h" if hours else f"{days}d"
