@@ -14,7 +14,7 @@ show.
 > Anthropic, PBC.
 
 <!-- markdownlint-disable-next-line MD033 -->
-<img src="docs/images/app-window.png" width="532" alt="Usage Dashboard for Claude window showing session, weekly, and weekly Fable quota bars with a Refresh button">
+<img src="docs/images/app-window.png" width="310" alt="Usage Dashboard for Claude strip: a header reading 66% used, 5m ago, with refresh and help buttons, above one line each for the session, weekly and weekly Fable limits, showing a coloured bar, percent used and time to reset">
 
 ## Install
 
@@ -52,25 +52,32 @@ python -m claude_usage.ui.app.main
 
 ## The window
 
-The window is resizable and grows to fit its content, but never shrinks
-below a size you chose. It stays above other windows and never steals focus
-when it refreshes — a refresh only repaints. Closing it stops the background
-poller and exits.
+The window is a compact, frameless strip: a header line, then one line per
+limit with a bar, the percent used and the time until it resets. Bar colours
+are the severity Claude Code reports — teal, amber, red — and nothing else;
+when the data is stale the bars turn hatched and grey. The strip grows to fit
+its content but never shrinks below a size you chose. It stays above other
+windows and never steals focus when it refreshes — a refresh only repaints.
 
-The window includes a **Refresh** button below the quota display that invokes
-`claude -p "/usage"` to refresh Claude Code's quota cache on demand. This is
-useful when the window shows "No quota data cached yet". While the refresh runs,
-the button displays "Refreshing…" and is disabled. If the refresh fails, an amber
-line at the bottom of the window says why: "Refresh failed: claude not found",
-"Refresh failed: timed out", or "Refresh failed: claude exited with an error".
-The line stays until a refresh succeeds; background updates do not clear it.
+Drag anywhere on the strip to move it. Hover over it to show **–** (minimise
+to the taskbar or Dock), **×** (close) and a resize grip in the bottom-right
+corner; right-click for the same Minimise and Close. Closing it stops the
+background poller and exits.
+
+The **↻** button invokes `claude -p "/usage"` to refresh Claude Code's quota
+cache on demand. This is useful when the strip shows "No quota data cached
+yet". While the refresh runs, ↻ dims and the header says "refreshing…". If the
+refresh fails, an amber line at the bottom of the strip says why: "Refresh
+failed: claude not found", "Refresh failed: timed out", or "Refresh failed:
+claude exited with an error". The line stays until a refresh succeeds;
+background updates do not clear it.
 To find `claude`, the app looks on its `PATH` and then in `~/.local/bin`
 (`%USERPROFILE%\.local\bin` on Windows), where the native installer puts it;
 `claude_executable` in config.toml overrides both. Each failure is also
 written to a log file: `~/Library/Logs/claude-usage/claude-usage.log` on macOS,
 `%LOCALAPPDATA%\claude-usage\Logs\claude-usage.log` on Windows.
 
-A **?** button next to Refresh explains the cost: the refresh spawns a real
+The **?** button next to ↻ explains the cost: the refresh spawns a real
 (tiny) Claude session, so each click consumes a small amount of your usage
 quota. Hover it for the short version, or click it for the full explanation.
 
