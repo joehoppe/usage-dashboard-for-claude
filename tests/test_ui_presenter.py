@@ -108,7 +108,7 @@ def test_no_quota_key_message():
         unavailable=QuotaUnavailable.NO_QUOTA_KEY,
     )
     view = present(snapshot, Config())
-    assert view.message == "No quota data cached yet — click Refresh"
+    assert view.message == "No quota data cached yet — click ↻"
 
 
 def test_read_error_no_history_message_carries_detail():
@@ -140,9 +140,15 @@ def test_read_error_with_history_has_no_message_but_shows_bars():
     assert "OSError" in view.notices
 
 
-def test_stale_appends_marker_to_age_text():
-    view = present(make_snapshot([make_limit()], is_stale=True), Config())
-    assert view.age_text.endswith("· STALE")
+def test_fresh_age_text_has_no_prefix():
+    view = present(make_snapshot([make_limit()]), Config())
+    assert view.age_text == "5m ago"
+
+
+def test_stale_age_text_says_how_old_the_data_is():
+    old = NOW - timedelta(days=12)
+    view = present(make_snapshot([make_limit()], measured_at=old, is_stale=True), Config())
+    assert view.age_text == "data 12d old"
     assert view.stale is True
 
 
@@ -153,12 +159,30 @@ def test_promo_and_config_notices_both_present():
     assert "+50% weekly limits promo" in view.notices
 
 
-def test_resets_text_present_and_absent():
-    with_reset = make_limit(resets_at=NOW + timedelta(hours=3))
+def test_resets_text_uses_two_units():
+    with_reset = make_limit(resets_at=NOW + timedelta(days=1, hours=4))
     without_reset = make_limit(resets_at=None)
     view = present(make_snapshot([with_reset, without_reset]), Config())
-    assert any(bar.resets_text == "resets in 3h" for bar in view.bars)
-    assert any(bar.resets_text is None for bar in view.bars)
+    assert view.bars[0].resets_text == "resets 1d 4h"
+    assert view.bars[1].resets_text is None
+
+
+def test_stale_snapshot_drops_reset_times():
+    limit = make_limit(resets_at=NOW + timedelta(hours=3))
+    view = present(make_snapshot([limit], is_stale=True), Config())
+    assert view.bars[0].resets_text is None
+
+
+def test_critical_when_any_fresh_bar_is_critical():
+    bars = [make_limit(severity="normal"), make_limit(kind="weekly_all", severity="critical")]
+    assert present(make_snapshot(bars), Config()).critical is True
+    assert present(make_snapshot([make_limit()]), Config()).critical is False
+
+
+def test_stale_data_is_never_critical():
+    # Review Focus 4: an old severity is not an alarm, so the stale border wins.
+    bars = [make_limit(severity="critical")]
+    assert present(make_snapshot(bars, is_stale=True), Config()).critical is False
 
 
 def test_present_error_returns_read_error_shaped_view():
@@ -172,3 +196,8 @@ def test_presenter_never_sets_a_refresh_failure():
     # Only QuotaFrame overlays it: the poller knows nothing about refreshes.
     assert present(make_snapshot([make_limit()]), Config()).refresh_failure is None
     assert present_error(RuntimeError("boom")).refresh_failure is None
+
+
+def test_presenter_never_sets_refreshing():
+    assert present(make_snapshot([make_limit()]), Config()).refreshing is False
+    assert present_error(RuntimeError("boom")).refreshing is False
