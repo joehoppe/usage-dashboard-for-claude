@@ -75,11 +75,6 @@ class QuotaPanel(wx.Panel):
         width, height = strip_layout.min_size(view, self._client_measure())
         return self.FromDIP(wx.Size(width, height))
 
-    def content_height(self, view: QuotaView) -> int:
-        # Interim: the frame still sizes itself by height until it moves to
-        # min_size().
-        return self.min_size(view).height
-
     def hit(self, pos: wx.Point) -> str | None:
         strip = self._layout(self._client_measure())
         if strip is None:

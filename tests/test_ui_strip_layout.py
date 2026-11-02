@@ -94,3 +94,13 @@ def test_hit_finds_buttons_and_grip():
     assert hit(strip, help_rect.x + 1, help_rect.y + 1) == "help"
     assert hit(strip, strip.grip.x + 1, strip.grip.y + 1) == "grip"
     assert hit(strip, 20, 40) is None
+
+
+def test_grip_sits_inside_the_rounded_corner():
+    # The window is clipped to a 6 px rounded rectangle; a grip in the very
+    # corner is cut away and can't be seen or grabbed.
+    strip = layout(make_view(), (310, 63), True, measure)
+    radius = 6
+    cx, cy = 310 - radius, 63 - radius  # centre of the bottom-right arc
+    far_x, far_y = strip.grip.x + strip.grip.w - 1, strip.grip.y + strip.grip.h - 1
+    assert (far_x - cx) ** 2 + (far_y - cy) ** 2 <= (radius - 1) ** 2

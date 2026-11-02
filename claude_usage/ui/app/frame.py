@@ -1,7 +1,15 @@
-"""wx.Frame composition root for the window: a top row (headline, age text,
-Refresh/help buttons), then bar rows and footer via QuotaPanel. STAY_ON_TOP,
-resizable, never steals focus on refresh (refresh only repaints — it never
-calls Raise()/SetFocus()).
+"""wx.Frame composition root for the compact strip: wires QuotaPanel's drawn
+buttons to refresh, help, minimise and close, and drives hover, drag and
+resize from the mouse.
+
+The strip is frameless but stays a real top-level window: it stays on top
+and keeps its taskbar button and Dock icon, which is how a minimised strip
+comes back. A right-click menu (Minimise, Close) replaces close-on-right-
+click, so a stray click can't quit. On macOS, which won't miniaturise a
+borderless window, minimise hides the strip and a Dock click restores it.
+
+Never steals focus on refresh: a poll or refresh only repaints — it never
+calls Raise()/SetFocus().
 """
 
 from __future__ import annotations
@@ -12,19 +20,11 @@ from collections.abc import Callable
 
 import wx
 
-from claude_usage.ui.app import theme
+from claude_usage.ui.app import strip_layout
 from claude_usage.ui.app.help_dialog import HelpDialog
 from claude_usage.ui.app.panels import QuotaPanel
 from claude_usage.ui.app.presenter import QuotaView
-from claude_usage.ui.app.refresh import HELP_TOOLTIP
 
-_MIN_WIDTH = 240
-# Opening size of the window. Narrow on purpose: this is a glanceable side
-# panel meant to park beside real work, not a document window. The height is
-# only a starting guess — _fit_to_content() grows it to whatever the current
-# view needs (see below).
-_DEFAULT_SIZE = (377, 216)
-_BUTTON_MARGIN = 8
 # Frameless, but still a real top-level window. SYSTEM_MENU gives the
 # Windows taskbar button its "Close window" item and lets the taskbar
 # restore a minimised strip. No MINIMIZE_BOX: on MSW it makes wx add
@@ -33,8 +33,8 @@ _BUTTON_MARGIN = 8
 # are how a minimised strip comes back. FRAME_SHAPED allows the rounded
 # outline.
 _STYLE = wx.BORDER_NONE | wx.STAY_ON_TOP | wx.SYSTEM_MENU | wx.FRAME_SHAPED
-# Extra horizontal breathing room for the exact-fit "?" button.
-_HELP_BUTTON_PADDING = 6
+_HOVER_POLL_MS = 100
+_CORNER_RADIUS = 6  # matches the border QuotaPanel draws
 
 
 class QuotaFrame(wx.Frame):
@@ -43,72 +43,43 @@ class QuotaFrame(wx.Frame):
         on_close: Callable[[], None],
         on_refresh: Callable[[], None] | None = None,
     ) -> None:
-        super().__init__(
-            None,
-            title="Usage Dashboard for Claude",
-            size=_DEFAULT_SIZE,
-            style=_STYLE,
-        )
-        self.SetBackgroundColour(wx.Colour(*theme.BACKGROUND))
+        super().__init__(None, title="Usage Dashboard for Claude", style=_STYLE)
+        # Opens at the default width and no height: the first show_view()
+        # grows it to exactly what that view needs.
+        self.SetSize(self.FromDIP(wx.Size(strip_layout.DEFAULT_WIDTH, 1)))
         self._on_close = on_close
-        # The latest refresh's footer line, overlaid on every view shown.
-        # GUI-thread state only: the poller and the refresh worker never touch it.
-        self._refresh_failure: str | None = None
+        self._on_refresh = on_refresh
+        # GUI-thread state only: the poller and the refresh worker never
+        # touch it. Both are overlaid on every view shown.
+        self._refresh_failure: str | None = None  # the latest refresh's footer line
+        self._refreshing = False
+        self._view: QuotaView | None = None  # the last view as delivered
+        # Mouse gesture in progress: a pressed button, a drag or a resize.
+        self._pressed: str | None = None
+        self._gesture: str | None = None  # "drag" | "resize"
+        self._gesture_origin = wx.Point()
+        self._gesture_start = wx.Point()  # frame position (drag) or size (resize)
+
         self.panel = QuotaPanel(self)
-        self._refresh_button: wx.Button | None = None
-        self._help_button: wx.Button | None = None
-        self._headline_text = wx.StaticText(self, label="")
-        self._headline_text.SetFont(self._headline_text.GetFont().Bold())
-        self._headline_text.SetForegroundColour(wx.Colour(*theme.TEXT_PRIMARY))
-        self._age_text = wx.StaticText(self, label="")
-        self._age_text.SetForegroundColour(wx.Colour(*theme.TEXT_SECONDARY))
-        row = wx.BoxSizer(wx.HORIZONTAL)
-        row.Add(self._headline_text, 0, wx.ALIGN_CENTER_VERTICAL)
-        row.Add(
-            self._age_text,
-            0,
-            wx.LEFT | wx.ALIGN_CENTER_VERTICAL,
-            _BUTTON_MARGIN,
-        )
-        row.AddStretchSpacer(1)
         sizer = wx.BoxSizer(wx.VERTICAL)
-        if on_refresh is not None:
-            self._refresh_button = wx.Button(self, label="Refresh")
-            self._refresh_button.Bind(wx.EVT_BUTTON, lambda event: on_refresh())
-            # Pre-compute the size of both labels so a label change never
-            # clips: min size is the max of both dimensions.
-            refresh_size = self._refresh_button.GetBestSize()
-            self._refresh_button.SetLabel("Refreshing…")
-            refreshing_size = self._refresh_button.GetBestSize()
-            self._refresh_button.SetLabel("Refresh")
-            max_width = max(refresh_size.width, refreshing_size.width)
-            max_height = max(refresh_size.height, refreshing_size.height)
-            self._refresh_button.SetMinSize(wx.Size(max_width, max_height))
-            # The "?" warns that refreshing spends quota (tooltip for hover,
-            # dialog for click). It must be visible before the first click,
-            # so it gets a button of its own.
-            self._help_button = wx.Button(self, label="?", style=wx.BU_EXACTFIT)
-            # BU_EXACTFIT hugs the "?" glyph too tightly to read as a button,
-            # so widen it a little without touching the exact-fit height.
-            help_size = self._help_button.GetBestSize()
-            self._help_button.SetMinSize(
-                wx.Size(help_size.width + _HELP_BUTTON_PADDING, help_size.height)
-            )
-            self._help_button.SetToolTip(HELP_TOOLTIP)
-            self._help_button.Bind(wx.EVT_BUTTON, self._show_refresh_help)
-            row.Add(self._refresh_button, 0, wx.ALIGN_CENTER_VERTICAL)
-            row.Add(
-                self._help_button,
-                0,
-                wx.LEFT | wx.ALIGN_CENTER_VERTICAL,
-                _BUTTON_MARGIN,
-            )
-        sizer.Add(row, 0, wx.EXPAND | wx.ALL, _BUTTON_MARGIN)
         sizer.Add(self.panel, 1, wx.EXPAND)
         self.SetSizer(sizer)
+
         self.Bind(wx.EVT_CLOSE, self._handle_close)
+        self.Bind(wx.EVT_SIZE, self._on_size)
         self.Bind(wx.EVT_CONTEXT_MENU, self._show_context_menu)
         self.panel.Bind(wx.EVT_CONTEXT_MENU, self._show_context_menu)
+        self.panel.Bind(wx.EVT_LEFT_DOWN, self._on_left_down)
+        self.panel.Bind(wx.EVT_LEFT_UP, self._on_left_up)
+        self.panel.Bind(wx.EVT_MOTION, self._on_motion)
+        self.panel.Bind(wx.EVT_MOUSE_CAPTURE_LOST, self._on_capture_lost)
+
+        # Hover is polled, not taken from enter/leave events: those fire
+        # whenever the pointer crosses into a child window, so the hover
+        # controls would flicker (spec §5.2).
+        self._hover_timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self._poll_hover, self._hover_timer)
+        self._hover_timer.Start(_HOVER_POLL_MS)
 
     def minimise(self) -> None:
         """Send the strip to the taskbar or Dock.
@@ -137,70 +108,129 @@ class QuotaFrame(wx.Frame):
         menu.Bind(wx.EVT_MENU, lambda event: self.Close(), close)
         return menu
 
+    def set_hovered(self, hovered: bool) -> None:
+        self.panel.set_hovered(hovered)
+
+    def begin_refresh(self) -> None:
+        """The dimmed ↻ and "refreshing…" are the entire in-progress UI."""
+        self._refreshing = True
+        if self._view is not None:
+            self.show_view(self._view)
+
+    def end_refresh(self, failure: str | None) -> None:
+        """Clear the in-progress state and record the outcome's footer line
+        (None clears it). Renders nothing: deliver() calls show_view straight
+        after, and that overlays the line.
+        """
+        self._refreshing = False
+        self._refresh_failure = failure
+
+    def show_view(self, view: QuotaView) -> None:
+        self._view = view
+        # Every view gets the last refresh's failure, poller views included:
+        # only a later click can show the problem is fixed.
+        view = dataclasses.replace(
+            view, refresh_failure=self._refresh_failure, refreshing=self._refreshing
+        )
+        self._fit_to_content(view)
+        self.panel.render(view)
+
+    def _on_button(self, name: str) -> None:
+        if name == "refresh":
+            # A click while a run is in flight does nothing: no second run.
+            if self._on_refresh is not None and not self._refreshing:
+                self._on_refresh()
+        elif name == "help":
+            with HelpDialog(self) as dialog:
+                dialog.ShowModal()
+        elif name == "minimise":
+            self.minimise()
+        elif name == "close":
+            self.Close()
+
+    def _fit_to_content(self, view: QuotaView) -> None:
+        """Grow the window when a view needs more room than it has, and hold
+        that as the minimum. Limit count, label width and footer lines all
+        vary per view, so a fixed size would clip.
+
+        Never shrinks: a size the user chose deliberately must stick.
+        """
+        needed = self.panel.min_size(view)
+        self.SetMinSize(needed)
+        width, height = self.GetSize()
+        if width < needed.width or height < needed.height:
+            self.SetSize((max(width, needed.width), max(height, needed.height)))
+
+    def _poll_hover(self, event: wx.TimerEvent) -> None:
+        pointer_inside = self.GetScreenRect().Contains(wx.GetMousePosition())
+        # Keep the controls up mid-gesture, even if the pointer outruns the strip.
+        self.set_hovered(self.IsShown() and (pointer_inside or self._gesture is not None))
+
+    def _on_left_down(self, event: wx.MouseEvent) -> None:
+        target = self.panel.hit(event.GetPosition())
+        if target is not None and target != "grip":
+            self._pressed = target  # acts on release over the same button
+            return
+        self._gesture = "resize" if target == "grip" else "drag"
+        self._gesture_origin = wx.GetMousePosition()
+        self._gesture_start = wx.Point(
+            *(self.GetSize() if target == "grip" else self.GetPosition())
+        )
+        self.panel.CaptureMouse()
+
+    def _on_motion(self, event: wx.MouseEvent) -> None:
+        event.Skip()  # the panel tracks hot buttons and tooltips too
+        if self._gesture is None or not event.LeftIsDown():
+            return
+        delta = wx.GetMousePosition() - self._gesture_origin
+        target = self._gesture_start + delta
+        if self._gesture == "drag":
+            self.Move(target)
+        else:
+            minimum = self.GetMinSize()
+            self.SetSize((max(target.x, minimum.width), max(target.y, minimum.height)))
+
+    def _on_left_up(self, event: wx.MouseEvent) -> None:
+        pressed, self._pressed = self._pressed, None
+        self._end_gesture()
+        if pressed is not None and self.panel.hit(event.GetPosition()) == pressed:
+            self._on_button(pressed)
+
+    def _on_capture_lost(self, event: wx.MouseCaptureLostEvent) -> None:
+        self._gesture = None
+
+    def _end_gesture(self) -> None:
+        self._gesture = None
+        if self.panel.HasCapture():
+            self.panel.ReleaseMouse()
+
+    def _on_size(self, event: wx.SizeEvent) -> None:
+        event.Skip()  # the sizer still lays out the panel
+        self._apply_rounded_shape()
+
+    def _apply_rounded_shape(self) -> None:
+        # Clip the window to the rounded border the panel draws. Square
+        # corners are acceptable where SetShape fails (spec §4.1).
+        width, height = self.GetSize()
+        if width <= 0 or height <= 0:
+            return
+        mask = wx.Bitmap(width, height)
+        dc = wx.MemoryDC(mask)
+        dc.SetBackground(wx.BLACK_BRUSH)
+        dc.Clear()
+        dc.SetBrush(wx.WHITE_BRUSH)
+        dc.SetPen(wx.WHITE_PEN)
+        dc.DrawRoundedRectangle(0, 0, width, height, self.FromDIP(_CORNER_RADIUS))
+        dc.SelectObject(wx.NullBitmap)
+        self.SetShape(wx.Region(mask, wx.BLACK))
+
     def _show_context_menu(self, event: wx.ContextMenuEvent) -> None:
         menu = self.context_menu()
         self.PopupMenu(menu)
         menu.Destroy()
 
-    def begin_refresh(self) -> None:
-        """The disabled button is the entire in-progress UI (design §6)."""
-        if self._refresh_button is None:
-            return
-        self._refresh_button.Disable()
-        self._refresh_button.SetLabel("Refreshing…")
-
-    def end_refresh(self, failure: str | None) -> None:
-        """Restore the button and record the outcome's footer line (None
-        clears it). Renders nothing: deliver() calls show_view straight
-        after, and that overlays the line.
-        """
-        self._refresh_failure = failure
-        if self._refresh_button is None:
-            return
-        self._refresh_button.SetLabel("Refresh")
-        self._refresh_button.Enable()
-
-    def show_view(self, view: QuotaView) -> None:
-        # Every view gets the last refresh's failure, poller views included:
-        # only a later click can show the problem is fixed.
-        view = dataclasses.replace(view, refresh_failure=self._refresh_failure)
-        self._headline_text.SetLabel(view.headline)
-        self._age_text.SetLabel(view.age_text)
-        self.Layout()  # label widths changed; re-place the top row
-        self._fit_to_content(view)
-        self.panel.render(view)
-
-    def _fit_to_content(self, view: QuotaView) -> None:
-        """Grow the window when a view needs more room than it has, and hold
-        that as the minimum. The constructor's height is only a starting
-        guess — bar count varies per view, and the window chrome eats height
-        the frame size does not account for, so a fixed height clips.
-
-        Never shrinks: a size the user chose deliberately must stick.
-        """
-        needed = self.panel.content_height(view) + self._top_row_height()
-        width, height = self.GetClientSize()
-        self.SetMinClientSize((_MIN_WIDTH, needed))
-        if height < needed:
-            self.SetClientSize((width, needed))
-
-    def _show_refresh_help(self, event: wx.CommandEvent) -> None:
-        with HelpDialog(self) as dialog:
-            dialog.ShowModal()
-
-    def _top_row_height(self) -> int:
-        # Without this the top row clips: content_height() covers only
-        # QuotaPanel's drawing (design §6).
-        heights = [
-            self._headline_text.GetBestSize().height,
-            self._age_text.GetBestSize().height,
-        ]
-        if self._refresh_button is not None:
-            heights.append(self._refresh_button.GetMinSize().height)
-        if self._help_button is not None:
-            heights.append(self._help_button.GetMinSize().height)
-        return max(heights) + 2 * _BUTTON_MARGIN
-
     def _handle_close(self, event: wx.CloseEvent) -> None:
+        self._hover_timer.Stop()
+        self._end_gesture()
         self._on_close()
         event.Skip()
