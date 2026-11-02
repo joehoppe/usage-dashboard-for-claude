@@ -85,13 +85,13 @@ def min_size(view: QuotaView, measure: Measure) -> tuple[int, int]:
         + reset_w
         + PAD_RIGHT
     )
-    footer_lines = len(_footer_lines(view))
+    footer_count = len(footer_lines(view))
     height = (
         2 * BORDER
         + PAD_TOP
         + HEADER_H
         + ROW_H * (len(view.bars) + len(_message_lines(view)))
-        + (FOOTER_GAP + ROW_H * footer_lines if footer_lines else 0)
+        + (FOOTER_GAP + ROW_H * footer_count if footer_count else 0)
         + PAD_BOTTOM
     )
     return max(DEFAULT_WIDTH, width), height
@@ -137,9 +137,9 @@ def layout(view: QuotaView, size: tuple[int, int], hovered: bool, measure: Measu
         y += ROW_H
 
     footer_ys = []
-    if _footer_lines(view):
+    if footer_lines(view):
         y += FOOTER_GAP
-        for _ in _footer_lines(view):
+        for _ in footer_lines(view):
             footer_ys.append(y)
             y += ROW_H
 
@@ -179,5 +179,6 @@ def _message_lines(view: QuotaView) -> list[str]:
     return [line for line in (view.message, view.message_detail) if line] if view.message else []
 
 
-def _footer_lines(view: QuotaView) -> list[str]:
+def footer_lines(view: QuotaView) -> list[str]:
+    """Notices, then the refresh failure last."""
     return [*view.notices, *([view.refresh_failure] if view.refresh_failure else [])]
