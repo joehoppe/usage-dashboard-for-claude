@@ -55,12 +55,19 @@ class QuotaPanel(wx.Panel):
         self.hovered = False
         self._hot: str | None = None  # button under the pointer, drawn brighter
         self._tooltip: str | None = None
-        self._font = self._make_font(_FONT_PX)
-        self._bold = self._make_font(_FONT_PX, wx.FONTWEIGHT_BOLD)
-        self._footer_font = self._make_font(_FOOTER_FONT_PX)
+        self.rescale()
         self.Bind(wx.EVT_PAINT, self._on_paint)
         self.Bind(wx.EVT_MOTION, self._on_motion)
         self.Bind(wx.EVT_LEAVE_WINDOW, self._on_leave)
+
+    def rescale(self) -> None:
+        """Rebuild the pixel-sized fonts for the current DPI. The frame calls
+        this when the strip moves to a monitor with different scaling;
+        geometry is rescaled on every paint, fonts are not."""
+        self._font = self._make_font(_FONT_PX)
+        self._bold = self._make_font(_FONT_PX, wx.FONTWEIGHT_BOLD)
+        self._footer_font = self._make_font(_FOOTER_FONT_PX)
+        self.Refresh()
 
     def render(self, view: QuotaView) -> None:
         self._view = view

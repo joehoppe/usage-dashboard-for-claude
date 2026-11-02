@@ -229,3 +229,20 @@ def test_the_live_paint_handler_raises_nothing(wx_app, monkeypatch):
     wx.Yield()
     frame.Destroy()
     assert errors == []
+
+
+class _DpiEvent:
+    def Skip(self):
+        pass
+
+
+def test_a_dpi_change_rebuilds_fonts_and_refits(frame, monkeypatch):
+    # Moving between monitors with different scaling: the panel's pixel-sized
+    # fonts must follow, and the window must grow to the new minimum.
+    frame.show_view(make_view())
+    old_font = frame.panel._font
+    bigger = wx.Size(frame.GetSize().width + 40, frame.GetSize().height + 30)
+    monkeypatch.setattr(frame.panel, "min_size", lambda view: bigger)
+    frame._on_dpi_changed(_DpiEvent())
+    assert frame.panel._font is not old_font
+    assert tuple(frame.GetSize()) == tuple(bigger)

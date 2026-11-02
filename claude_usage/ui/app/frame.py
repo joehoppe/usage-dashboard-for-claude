@@ -67,6 +67,7 @@ class QuotaFrame(wx.Frame):
 
         self.Bind(wx.EVT_CLOSE, self._handle_close)
         self.Bind(wx.EVT_SIZE, self._on_size)
+        self.Bind(wx.EVT_DPI_CHANGED, self._on_dpi_changed)
         self.Bind(wx.EVT_CONTEXT_MENU, self._show_context_menu)
         self.panel.Bind(wx.EVT_CONTEXT_MENU, self._show_context_menu)
         self.panel.Bind(wx.EVT_LEFT_DOWN, self._on_left_down)
@@ -203,6 +204,13 @@ class QuotaFrame(wx.Frame):
         self._gesture = None
         if self.panel.HasCapture():
             self.panel.ReleaseMouse()
+
+    def _on_dpi_changed(self, event: wx.DPIChangedEvent) -> None:
+        # Moved to a monitor with different scaling: new fonts, new minimum.
+        event.Skip()
+        self.panel.rescale()
+        if self._view is not None:
+            self.show_view(self._view)
 
     def _on_size(self, event: wx.SizeEvent) -> None:
         event.Skip()  # the sizer still lays out the panel
