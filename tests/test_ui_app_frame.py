@@ -8,12 +8,14 @@ rather than the module's own constant — importing the constant would make
 the assertion agree with any value frame.py happens to hold.
 """
 
+import dataclasses
 import sys
 
 import pytest
 import wx
 
 from claude_usage.ui.app.frame import QuotaFrame
+from claude_usage.ui.app.panels import QuotaPanel
 from claude_usage.ui.app.presenter import BarView, QuotaView
 
 # The window is a glanceable side panel, not a document window: it opens
@@ -21,7 +23,7 @@ from claude_usage.ui.app.presenter import BarView, QuotaView
 EXPECTED_SIZE = (377, 216)
 
 
-def make_view(bars=3):
+def make_view(bars=3, notices=("+50% weekly limits promo through Sep 13",)):
     return QuotaView(
         headline="66% used",
         age_text="as of 7m ago",
@@ -37,7 +39,7 @@ def make_view(bars=3):
             )
             for index in range(bars)
         ),
-        notices=("+50% weekly limits promo through Sep 13",),
+        notices=notices,
         message=None,
         message_detail=None,
     )
@@ -138,3 +140,47 @@ def test_native_window_has_no_title_bar(frame):
     ws_caption = 0x00C00000
     style = ctypes.windll.user32.GetWindowLongW(frame.GetHandle(), -16)
     assert not style & ws_caption
+
+
+def test_panel_min_size_matches_the_layout(wx_app):
+    parent = wx.Frame(None)
+    panel = QuotaPanel(parent)
+    expected = parent.FromDIP(wx.Size(310, 63))
+    assert tuple(panel.min_size(make_view(bars=3, notices=()))) == tuple(expected)
+    parent.Destroy()
+
+
+def test_panel_hit_maps_through_dips(wx_app):
+    parent = wx.Frame(None, size=(400, 200))
+    panel = QuotaPanel(parent)
+    panel.SetSize((400, 200))
+    panel.render(make_view(bars=3, notices=()))
+    panel.set_hovered(True)
+    assert panel.hit(panel.FromDIP(wx.Point(20, 40))) is None
+    parent.Destroy()
+
+
+@pytest.mark.parametrize(
+    "view",
+    [
+        make_view(),
+        dataclasses.replace(make_view(), stale=True, refreshing=True),
+        dataclasses.replace(make_view(), critical=True, refresh_failure=FAILURE),
+        make_message_view(detail="RuntimeError"),
+        make_view(bars=0, notices=()),
+    ],
+    ids=["fresh", "stale-refreshing", "critical-failure", "message", "no-limits"],
+)
+def test_panel_paints_every_view_shape(wx_app, view):
+    # A paint error inside EVT_PAINT is only printed, never raised, so paint
+    # into a bitmap directly to catch it.
+    parent = wx.Frame(None)
+    panel = QuotaPanel(parent)
+    panel.SetSize(panel.min_size(view))
+    panel.render(view)
+    panel.set_hovered(True)
+    bitmap = wx.Bitmap(*panel.GetClientSize())
+    dc = wx.MemoryDC(bitmap)
+    panel._paint(dc)
+    dc.SelectObject(wx.NullBitmap)
+    parent.Destroy()
