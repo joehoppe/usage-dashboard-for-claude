@@ -31,6 +31,8 @@ class ClaudeJsonQuotaSource:
         if not isinstance(raw, dict):
             return self._fail(ValueError("root is not an object"))
 
+        # The claude CLI's on-disk copy of its last usage fetch from Anthropic's
+        # servers, not a cache of ours; we re-read the file on every call.
         cached = raw.get("cachedUsageUtilization")
         if not isinstance(cached, dict):
             return QuotaUnavailable.NO_QUOTA_KEY
@@ -58,6 +60,8 @@ class ClaudeJsonQuotaSource:
 
 
 def _parse_limits(cached: dict) -> tuple[LimitReading, ...]:
+    # `cached` is the cachedUsageUtilization object, already checked to be a
+    # dict by read_quota; the limits live under its utilization.limits list.
     utilization = cached.get("utilization")
     if not isinstance(utilization, dict):
         return ()

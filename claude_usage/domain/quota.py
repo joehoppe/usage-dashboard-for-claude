@@ -22,8 +22,8 @@ class QuotaUnavailable(Enum):
 class LimitReading:
     """One entry from cachedUsageUtilization.utilization.limits[]."""
 
-    kind: str
-    group: str
+    kind: str  # which limit: "session", "weekly_all", "weekly_scoped"; open-ended
+    group: str  # the window it shares: "session" or "weekly"; "" when absent
     percent: int
     severity: str
     is_active: bool
