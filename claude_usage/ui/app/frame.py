@@ -59,6 +59,8 @@ class QuotaFrame(wx.Frame):
         self._gesture: str | None = None  # "drag" | "resize"
         self._gesture_origin = wx.Point()
         self._gesture_start = wx.Point()  # frame position (drag) or size (resize)
+        self._shaped_size: tuple[int, int] | None = None  # size the shape was cut for
+        self._reshaping = False
 
         self.panel = QuotaPanel(self)
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -214,7 +216,17 @@ class QuotaFrame(wx.Frame):
 
     def _on_size(self, event: wx.SizeEvent) -> None:
         event.Skip()  # the sizer still lays out the panel
-        self._apply_rounded_shape()
+        # macOS answers SetShape with a size event from inside the call;
+        # reshaping on that one too recurses until Python gives up.
+        size = tuple(self.GetSize())
+        if self._reshaping or size == self._shaped_size:
+            return
+        self._reshaping = True
+        try:
+            self._apply_rounded_shape()
+        finally:
+            self._reshaping = False
+        self._shaped_size = size
 
     def _apply_rounded_shape(self) -> None:
         # Clip the window to the rounded border the panel draws. Square
