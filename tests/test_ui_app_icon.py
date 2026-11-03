@@ -22,6 +22,7 @@ from claude_usage.ui.app.icon import (
 )
 
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+PNG_COLOUR_TYPE_RGBA = 6
 
 # Windows asks a window for exactly two icon sizes: 16px for the title bar
 # and Alt-Tab, 32px for the taskbar button at 100% DPI.
@@ -50,6 +51,12 @@ def test_dock_only_on_macos():
     assert uses_dock("darwin")
     assert not uses_dock("win32")
     assert not uses_dock("linux")
+
+
+def test_icon_asset_has_an_alpha_channel():
+    # IHDR colour type 6 is truecolour with alpha. Without it the shell
+    # paints the icon's background as an opaque square on the taskbar.
+    assert ICON_PATH.read_bytes()[25] == PNG_COLOUR_TYPE_RGBA
 
 
 def test_icon_sizes_cover_the_windows_icon_slots():
