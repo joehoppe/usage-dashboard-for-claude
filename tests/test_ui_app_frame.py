@@ -10,6 +10,7 @@ with any value the module happens to hold.
 
 import dataclasses
 import sys
+import traceback
 
 import pytest
 import wx
@@ -228,12 +229,41 @@ def test_the_live_paint_handler_raises_nothing(wx_app, monkeypatch):
     frame.panel.Update()
     wx.Yield()
     frame.Destroy()
-    assert errors == []
+    # A RecursionError's repr says nothing; name the frames that repeated.
+    assert errors == [], "".join(traceback.format_tb(errors[0][2])[-6:])
 
 
 class _DpiEvent:
     def Skip(self):
         pass
+
+
+def test_a_size_event_raised_while_reshaping_does_not_reshape_again(frame, monkeypatch):
+    # macOS answers SetShape with a size event from inside the call; reshaping
+    # on that one too recursed until Python gave up.
+    shapes = []
+
+    def set_shape(region):
+        shapes.append(region)
+        frame._on_size(_DpiEvent())
+        return True
+
+    monkeypatch.setattr(frame, "SetShape", set_shape)
+    frame.SetSize((400, 120))
+    frame._on_size(_DpiEvent())
+    assert len(shapes) == 1
+
+
+def test_only_a_new_size_reshapes_the_window(frame, monkeypatch):
+    shapes = []
+    monkeypatch.setattr(frame, "SetShape", lambda region: shapes.append(region) or True)
+    frame.SetSize((400, 120))
+    frame._on_size(_DpiEvent())
+    frame._on_size(_DpiEvent())
+    assert len(shapes) == 1
+    frame.SetSize((420, 120))
+    frame._on_size(_DpiEvent())
+    assert len(shapes) == 2
 
 
 def test_a_dpi_change_rebuilds_fonts_and_refits(frame, monkeypatch):
