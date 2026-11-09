@@ -29,7 +29,6 @@ def _all_colors():
         theme.BORDER_CRITICAL,
         theme.TEXT_PRIMARY,
         theme.TEXT_SECONDARY,
-        theme.TEXT_FAINT,
         theme.TRACK,
         theme.STALE_DOT,
         theme.HATCH_STRIPE,
@@ -57,13 +56,9 @@ def test_primary_text_has_aaa_contrast_on_background():
     assert _contrast(theme.TEXT_PRIMARY, theme.BACKGROUND) >= 7.0
 
 
-def test_secondary_text_has_aa_contrast_on_background():
-    assert _contrast(theme.TEXT_SECONDARY, theme.BACKGROUND) >= 4.5
-
-
-def test_faint_text_stays_readable():
-    # Stale numbers are dimmed, not hidden.
-    assert _contrast(theme.TEXT_FAINT, theme.BACKGROUND) >= 4.5
+def test_secondary_text_is_clearly_readable_on_background():
+    # Thin 11 px monospace reads lighter than its ratio, so aim well past AAA.
+    assert _contrast(theme.TEXT_SECONDARY, theme.BACKGROUND) >= 10.0
 
 
 def test_severity_and_glyph_text_pass_aa_on_background():

@@ -287,3 +287,42 @@ def test_a_dpi_change_rebuilds_fonts_and_refits(frame, monkeypatch):
     frame._on_dpi_changed(_DpiEvent())
     assert frame.panel._font is not old_font
     assert tuple(frame.GetSize()) == tuple(bigger)
+
+
+def paint_and_record(view, monkeypatch):
+    """Paint into a bitmap; return each drawn text with its color and boldness."""
+    drawn = {}
+    draw = QuotaPanel._text
+
+    def record(self, dc, text, x, top, line_h, color):
+        bold = dc.GetFont().GetWeight() >= wx.FONTWEIGHT_BOLD
+        drawn[text] = ((color.Red(), color.Green(), color.Blue()), bold)
+        return draw(self, dc, text, x, top, line_h, color)
+
+    monkeypatch.setattr(QuotaPanel, "_text", record)
+    parent = wx.Frame(None)
+    panel = QuotaPanel(parent)
+    panel.SetSize(panel.min_size(view))
+    panel.render(view)
+    bitmap = wx.Bitmap(*panel.GetClientSize())
+    dc = wx.MemoryDC(bitmap)
+    panel._paint(dc)
+    dc.SelectObject(wx.NullBitmap)
+    parent.Destroy()
+    return drawn
+
+
+LABEL_GRAY = (190, 197, 206)  # theme.TEXT_SECONDARY, as a literal
+NEAR_WHITE = (230, 232, 235)  # theme.TEXT_PRIMARY, as a literal
+
+
+def test_percentages_are_bold_and_near_white_when_fresh(wx_app, monkeypatch):
+    drawn = paint_and_record(make_view(notices=()), monkeypatch)
+    assert drawn["10%"] == (NEAR_WHITE, True)
+
+
+def test_stale_percentages_and_headline_use_the_label_gray(wx_app, monkeypatch):
+    view = dataclasses.replace(make_view(notices=()), stale=True)
+    drawn = paint_and_record(view, monkeypatch)
+    assert drawn["10%"] == (LABEL_GRAY, True)
+    assert drawn["66% used"] == (LABEL_GRAY, True)
