@@ -149,9 +149,20 @@ def test_window_has_no_os_caption_but_stays_on_top_and_minimisable(frame):
     style = frame.GetWindowStyleFlag()
     assert not style & wx.CAPTION
     assert style & wx.STAY_ON_TOP
-    assert style & wx.SYSTEM_MENU  # taskbar "Close window"
     assert not style & wx.FRAME_NO_TASKBAR
     assert not style & wx.FRAME_TOOL_WINDOW
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the taskbar menu is Windows-only")
+def test_windows_taskbar_button_offers_close(frame):
+    assert frame.GetWindowStyleFlag() & wx.SYSTEM_MENU
+
+
+def test_native_chrome_takes_none_of_the_window(frame):
+    # macOS turns SYSTEM_MENU into a title bar that eats the strip's height
+    # while wx still reports no CAPTION, so compare the sizes themselves.
+    frame.show_view(make_view())
+    assert tuple(frame.GetClientSize()) == tuple(frame.GetSize())
 
 
 def test_context_menu_offers_minimise_then_close(frame):
