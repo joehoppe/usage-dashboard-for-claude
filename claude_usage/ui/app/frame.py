@@ -27,12 +27,18 @@ from claude_usage.ui.app.presenter import QuotaView
 
 # Frameless, but still a real top-level window. SYSTEM_MENU gives the
 # Windows taskbar button its "Close window" item and lets the taskbar
-# restore a minimised strip. No MINIMIZE_BOX: on MSW it makes wx add
-# WS_CAPTION, bringing the title bar back; Iconize() works without it. No
-# FRAME_TOOL_WINDOW or FRAME_NO_TASKBAR: the taskbar button and Dock icon
-# are how a minimised strip comes back. FRAME_SHAPED allows the rounded
+# restore a minimised strip; it is Windows-only because macOS turns it into
+# a title bar that eats the strip's height. No MINIMIZE_BOX: on MSW it makes
+# wx add WS_CAPTION, bringing the title bar back; Iconize() works without
+# it. No FRAME_TOOL_WINDOW or FRAME_NO_TASKBAR: the taskbar button and Dock
+# icon are how a minimised strip comes back. FRAME_SHAPED allows the rounded
 # outline.
-_STYLE = wx.BORDER_NONE | wx.STAY_ON_TOP | wx.SYSTEM_MENU | wx.FRAME_SHAPED
+_STYLE = (
+    wx.BORDER_NONE
+    | wx.STAY_ON_TOP
+    | wx.FRAME_SHAPED
+    | (wx.SYSTEM_MENU if sys.platform == "win32" else 0)
+)
 _HOVER_POLL_MS = 100
 _CORNER_RADIUS = 6  # matches the border QuotaPanel draws
 
