@@ -24,10 +24,20 @@ def _contrast(a: tuple[int, int, int], b: tuple[int, int, int]) -> float:
 def _all_colors():
     return [
         theme.BACKGROUND,
+        theme.BORDER,
+        theme.BORDER_STALE,
+        theme.BORDER_CRITICAL,
         theme.TEXT_PRIMARY,
         theme.TEXT_SECONDARY,
         theme.TRACK,
-        theme.STALE_FILL,
+        theme.STALE_DOT,
+        theme.HATCH_STRIPE,
+        theme.HATCH_GROUND,
+        theme.BUTTON_FILL,
+        theme.BUTTON_BORDER,
+        theme.BUTTON_GLYPH,
+        theme.BUTTON_HOVER_BORDER,
+        theme.GRIP,
         *theme.SEVERITY_FILLS.values(),
     ]
 
@@ -46,8 +56,14 @@ def test_primary_text_has_aaa_contrast_on_background():
     assert _contrast(theme.TEXT_PRIMARY, theme.BACKGROUND) >= 7.0
 
 
-def test_secondary_text_has_aa_contrast_on_background():
-    assert _contrast(theme.TEXT_SECONDARY, theme.BACKGROUND) >= 4.5
+def test_secondary_text_is_clearly_readable_on_background():
+    # Thin 11 px monospace reads lighter than its ratio, so aim well past AAA.
+    assert _contrast(theme.TEXT_SECONDARY, theme.BACKGROUND) >= 10.0
+
+
+def test_severity_and_glyph_text_pass_aa_on_background():
+    for rgb in (*theme.SEVERITY_FILLS.values(), theme.BUTTON_GLYPH):
+        assert _contrast(rgb, theme.BACKGROUND) >= 4.5
 
 
 def test_severity_fills_cover_all_presenter_severities():

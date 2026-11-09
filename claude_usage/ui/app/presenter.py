@@ -14,7 +14,7 @@ from claude_usage.domain.quota import (
     QuotaUnavailable,
     time_remaining,
 )
-from claude_usage.ui.shared.format import coarse, label_for
+from claude_usage.ui.shared.format import coarse, coarse_pair, label_for
 
 _SEVERITY = {"normal": "normal", "warning": "warning"}
 
@@ -23,7 +23,7 @@ _KIND_ORDER = {"session": 0, "weekly_all": 1, "weekly_scoped": 2}
 
 _NO_DATA_MESSAGES = {
     QuotaUnavailable.NO_FILE: "Claude Code data not found",
-    QuotaUnavailable.NO_QUOTA_KEY: "No quota data cached yet — click Refresh",
+    QuotaUnavailable.NO_QUOTA_KEY: "No quota data cached yet — click ↻",
 }
 
 _READ_ERROR_MESSAGE = "Couldn't read quota data"
@@ -38,7 +38,7 @@ class BarView:
     used: int                # percent clamped to 0–100, the number shown (SPEC §7.2)
     severity: str            # "normal" | "warning" | "critical"
     active: bool
-    resets_text: str | None  # "resets in 3h"
+    resets_text: str | None  # "resets 1d 4h"; None when stale
     # fmt: on
 
 
@@ -47,13 +47,15 @@ class QuotaView:
     # The trailing comments are a column: each field against a worked example.
     # fmt: off
     headline: str              # "66% used"
-    age_text: str              # "as of 7m ago"
+    age_text: str              # "7m ago", or "data 12d old" when stale
     stale: bool
     bars: tuple[BarView, ...]  # fixed kind order: session, weekly, weekly fable
     notices: tuple[str, ...]
     message: str | None        # set only when there are no bars to show
     message_detail: str | None
+    critical: bool = False     # a bar is critical and the data is fresh
     refresh_failure: str | None = None  # "Refresh failed: timed out"; set only by QuotaFrame
+    refreshing: bool = False   # a refresh is in flight; set only by QuotaFrame
     # fmt: on
 
 
@@ -84,16 +86,15 @@ def present(snapshot: QuotaSnapshot, config: Config) -> QuotaView:
     headline = f"{_used(binding.percent)}% used" if binding else "No limits reported"
 
     bars = tuple(
-        _bar_view(limit, snapshot.captured_at)
+        _bar_view(limit, snapshot.captured_at, snapshot.is_stale)
         for limit in sorted(
             quota.limits,
             key=lambda limit: _KIND_ORDER.get(limit.kind, len(_KIND_ORDER)),
         )
     )
 
-    age_text = f"as of {coarse(quota.age(snapshot.captured_at))} ago"
-    if snapshot.is_stale:
-        age_text += " · STALE"
+    age = coarse(quota.age(snapshot.captured_at))
+    age_text = f"data {age} old" if snapshot.is_stale else f"{age} ago"
 
     return QuotaView(
         headline=headline,
@@ -103,6 +104,8 @@ def present(snapshot: QuotaSnapshot, config: Config) -> QuotaView:
         notices=tuple(notices),
         message=None,
         message_detail=None,
+        # An old severity is not an alarm: stale data never turns the border red.
+        critical=not snapshot.is_stale and any(bar.severity == "critical" for bar in bars),
     )
 
 
@@ -124,13 +127,14 @@ def _used(percent: int) -> int:
     return max(0, min(100, percent))
 
 
-def _bar_view(limit: LimitReading, now: datetime) -> BarView:
-    resets_in = time_remaining(limit.resets_at, now)
+def _bar_view(limit: LimitReading, now: datetime, stale: bool) -> BarView:
+    # A stale reading's reset times may already have passed, so show none.
+    resets_in = None if stale else time_remaining(limit.resets_at, now)
     return BarView(
         label=label_for(limit),
         percent=limit.percent,
         used=_used(limit.percent),
         severity=_SEVERITY.get(limit.severity, "critical"),
         active=limit.is_active,
-        resets_text=f"resets in {coarse(resets_in)}" if resets_in is not None else None,
+        resets_text=f"resets {coarse_pair(resets_in)}" if resets_in is not None else None,
     )
