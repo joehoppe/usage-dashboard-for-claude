@@ -94,6 +94,13 @@ say why on the same line. If a rule is wrong about the codebase as a whole,
 it belongs in `ignore` or `per-file-ignores` with a comment, not scattered
 across the files it misjudges.
 
+## GUI Verification (wxPython app)
+
+After any layout, sizing, theming, or label change: run the full pytest suite
+AND capture an offscreen/live screenshot at the app's real window dimensions
+before claiming done. Use portable wx APIs rather than gating behavior on
+`sys.platform`.
+
 ## Spec Documents
 
 Markdown spec documents should be saved in the folder in which it will likely be implemented, and committed alongside the code.
