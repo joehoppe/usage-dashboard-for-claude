@@ -12,12 +12,12 @@ from dataclasses import dataclass
 
 from claude_usage.ui.app.presenter import QuotaView
 
-Measure = Callable[[str], int]  # text width in DIPs at the strip's 9 px font
+Measure = Callable[[str], int]  # text width in DIPs at the strip's 11 px font
 
 BORDER = 1
 PAD_TOP, PAD_RIGHT, PAD_BOTTOM, PAD_LEFT = 5, 8, 6, 14  # left holds the dot
-HEADER_H = 14
-ROW_H = 12
+HEADER_H = 16
+ROW_H = 14
 FOOTER_GAP = 2
 BUTTON = 13
 HEADER_GAP = 5

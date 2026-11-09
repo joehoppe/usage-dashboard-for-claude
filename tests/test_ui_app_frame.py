@@ -51,7 +51,7 @@ def frame(wx_app):
 
 
 FAILURE = "Refresh failed: claude not found"
-NOTICE_HEIGHT = 12  # ROW_H in strip_layout.py, as a literal (see module docstring)
+NOTICE_HEIGHT = 14  # ROW_H in strip_layout.py, as a literal (see module docstring)
 FOOTER_GAP = 2  # opens the footer when the failure is its first line
 
 
@@ -102,9 +102,9 @@ def test_the_failure_line_grows_the_minimum_height_by_one_line(frame, view, grow
     assert frame.GetMinSize().height - without == frame.FromDIP(grows_by)
 
 
-def test_three_limits_open_at_310_by_63(frame):
+def test_three_limits_open_at_310_by_71(frame):
     frame.show_view(make_view(bars=3, notices=()))
-    assert tuple(frame.GetSize()) == tuple(frame.FromDIP(wx.Size(310, 63)))
+    assert tuple(frame.GetSize()) == tuple(frame.FromDIP(wx.Size(310, 71)))
 
 
 def test_grows_to_fit_but_never_shrinks(frame):
@@ -186,7 +186,7 @@ def test_native_window_has_no_title_bar(frame):
 def test_panel_min_size_matches_the_layout(wx_app):
     parent = wx.Frame(None)
     panel = QuotaPanel(parent)
-    expected = parent.FromDIP(wx.Size(310, 63))
+    expected = parent.FromDIP(wx.Size(310, 71))
     assert tuple(panel.min_size(make_view(bars=3, notices=()))) == tuple(expected)
     parent.Destroy()
 

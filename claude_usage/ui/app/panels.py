@@ -36,8 +36,8 @@ _TRACK_RADIUS = 2
 _HATCH_PERIOD = 4
 _HATCH_STRIPE_W = 2
 _DISABLED_ALPHA = 102  # 40%: ↻ while a refresh runs
-_FONT_PX = 9
-_FOOTER_FONT_PX = 8
+_FONT_PX = 11
+_FOOTER_FONT_PX = 10
 
 _TOOLTIPS = {
     "help": HELP_TOOLTIP,
