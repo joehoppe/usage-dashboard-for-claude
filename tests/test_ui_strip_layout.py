@@ -30,31 +30,31 @@ def make_view(bars=3, notices=(), failure=None, message=None, detail=None, label
     )
 
 
-def test_three_limits_default_to_310_by_63():
-    assert min_size(make_view(bars=3), measure) == (310, 63)
+def test_three_limits_default_to_310_by_71():
+    assert min_size(make_view(bars=3), measure) == (310, 71)
 
 
-def test_each_footer_line_adds_12_after_a_2px_gap():
-    assert min_size(make_view(notices=("a",)), measure)[1] == 63 + 2 + 12
+def test_each_footer_line_adds_14_after_a_2px_gap():
+    assert min_size(make_view(notices=("a",)), measure)[1] == 71 + 2 + 14
     view = make_view(notices=("a",), failure="Refresh failed: timed out")
-    assert min_size(view, measure)[1] == 63 + 2 + 24
+    assert min_size(view, measure)[1] == 71 + 2 + 28
 
 
 def test_message_view_with_detail_is_two_lines():
     view = make_view(bars=0, message="Couldn't read quota data", detail="OSError")
-    assert min_size(view, measure)[1] == 27 + 24
+    assert min_size(view, measure)[1] == 29 + 28
 
 
 def test_no_limits_is_header_only():
     # Review Focus 5.
-    assert min_size(make_view(bars=0), measure) == (310, 27)
+    assert min_size(make_view(bars=0), measure) == (310, 29)
 
 
 def test_long_label_widens_the_strip_and_keeps_the_bar_at_60():
     # Review Focus 1.
     view = make_view(labels=["Weekly Claude Opus 4.1 Preview"])
     width, _ = min_size(view, measure)
-    strip = layout(view, (width, 63), hovered=False, measure=measure)
+    strip = layout(view, (width, 71), hovered=False, measure=measure)
     assert width > 310
     assert strip.rows[0].bar.w >= 60
     assert strip.rows[0].label.x + strip.rows[0].label.w <= strip.rows[0].bar.x
@@ -68,8 +68,8 @@ def test_long_footer_text_never_widens():
 
 
 def test_bars_stretch_with_width_other_columns_do_not():
-    narrow = layout(make_view(), (310, 63), False, measure).rows[0]
-    wide = layout(make_view(), (400, 63), False, measure).rows[0]
+    narrow = layout(make_view(), (310, 71), False, measure).rows[0]
+    wide = layout(make_view(), (400, 71), False, measure).rows[0]
     assert wide.bar.w - narrow.bar.w == 90
     assert (wide.label.w, wide.percent.w, wide.reset.w) == (
         narrow.label.w,
@@ -79,8 +79,8 @@ def test_bars_stretch_with_width_other_columns_do_not():
 
 
 def test_window_controls_and_grip_only_when_hovered():
-    idle = layout(make_view(), (310, 63), False, measure)
-    hover = layout(make_view(), (310, 63), True, measure)
+    idle = layout(make_view(), (310, 71), False, measure)
+    hover = layout(make_view(), (310, 71), True, measure)
     assert list(idle.buttons) == ["refresh", "help"] and idle.grip is None
     assert list(hover.buttons) == ["minimise", "close", "refresh", "help"]
     assert hover.grip is not None
@@ -89,7 +89,7 @@ def test_window_controls_and_grip_only_when_hovered():
 
 
 def test_hit_finds_buttons_and_grip():
-    strip = layout(make_view(), (310, 63), True, measure)
+    strip = layout(make_view(), (310, 71), True, measure)
     help_rect = strip.buttons["help"]
     assert hit(strip, help_rect.x + 1, help_rect.y + 1) == "help"
     assert hit(strip, strip.grip.x + 1, strip.grip.y + 1) == "grip"
@@ -99,8 +99,8 @@ def test_hit_finds_buttons_and_grip():
 def test_grip_sits_inside_the_rounded_corner():
     # The window is clipped to a 6 px rounded rectangle; a grip in the very
     # corner is cut away and can't be seen or grabbed.
-    strip = layout(make_view(), (310, 63), True, measure)
+    strip = layout(make_view(), (310, 71), True, measure)
     radius = 6
-    cx, cy = 310 - radius, 63 - radius  # centre of the bottom-right arc
+    cx, cy = 310 - radius, 71 - radius  # centre of the bottom-right arc
     far_x, far_y = strip.grip.x + strip.grip.w - 1, strip.grip.y + strip.grip.h - 1
     assert (far_x - cx) ** 2 + (far_y - cy) ** 2 <= (radius - 1) ** 2
