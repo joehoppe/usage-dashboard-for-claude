@@ -23,7 +23,6 @@ from claude_usage.ui.app.strip_layout import Rect, StripLayout
 _BACKGROUND = wx.Colour(*theme.BACKGROUND)
 _TEXT_PRIMARY = wx.Colour(*theme.TEXT_PRIMARY)
 _TEXT_SECONDARY = wx.Colour(*theme.TEXT_SECONDARY)
-_TEXT_FAINT = wx.Colour(*theme.TEXT_FAINT)
 _TRACK = wx.Colour(*theme.TRACK)
 _HATCH_STRIPE = wx.Colour(*theme.HATCH_STRIPE)
 _HATCH_GROUND = wx.Colour(*theme.HATCH_GROUND)
@@ -203,7 +202,7 @@ class QuotaPanel(wx.Panel):
         x = self.FromDIP(strip.headline_x)
         dc.SetFont(self._bold)
         x = self._text(
-            dc, view.headline, x, top, line_h, _TEXT_FAINT if view.stale else _TEXT_PRIMARY
+            dc, view.headline, x, top, line_h, _TEXT_SECONDARY if view.stale else _TEXT_PRIMARY
         )
         dc.SetFont(self._font)
         x = self._text(
@@ -283,12 +282,15 @@ class QuotaPanel(wx.Panel):
                 dc.DrawRoundedRectangle(fill, radius)
 
         if stale:
-            percent_color = _TEXT_FAINT
+            percent_color = _TEXT_SECONDARY
         elif bar.severity == "normal":
             percent_color = _TEXT_PRIMARY
         else:
             percent_color = severity
+        # Bold: thin 11 px strokes never reach their full color once smoothed.
+        dc.SetFont(self._bold)
         self._text_right(dc, f"{bar.used}%", self._px(row.percent), percent_color)
+        dc.SetFont(self._font)
         if bar.resets_text:
             self._text_right(dc, bar.resets_text, self._px(row.reset), _TEXT_SECONDARY)
 
