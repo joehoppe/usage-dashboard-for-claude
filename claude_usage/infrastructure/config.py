@@ -1,4 +1,4 @@
-"""Adapter reading claude-usage's config.toml. Read-only; the app never writes it."""
+"""Loads the dashboard's settings from ~/.config/claude-usage/config.toml; never writes to it."""
 
 from __future__ import annotations
 
